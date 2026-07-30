@@ -211,50 +211,202 @@ def mean_overlap(cells) -> float:
     return sum(cell[4] for cell in cells) / len(cells)
 
 
-def cell_details(blocks, label_block, rect, cell_x, next_row_y):
-    """The variants printed inside one cell.
+def detail_tokens(blocks):
+    """Every price / product code / quantity / style token printed on the page,
+    each with the x-position it occupies.
 
-    Pages that print prices inline set one line per sales style — "Aiko 370円
-    800014" above "Treasure 100円 815001" — so tokens are grouped by their
-    baseline and each line becomes one variant. Only these pages carry prices at
-    all; for the rest of the catalogue the price list is a separate section.
-
-    The horizontal range is the cell's column, not the cropped artwork: the
-    price lines run the full width of the cell, so measuring from the trimmed
-    swatch would drop the product code sitting at its right edge.
+    Vision returns a printed line either as one block ("丸小 約6.5g入 180円
+    741911") or as one block per field, so blocks are split into tokens and each
+    token's x-range is interpolated from its offset within the block. Working at
+    token level rather than block level is what lets a line be attributed to a
+    cell by position.
     """
-    x0, x1 = cell_x
-    y0, y1 = min(rect.y0, label_block.y0) - 2, next_row_y
+    out = []
+    for b in blocks:
+        text = re.sub(r"(?<=[\d,])\s+(?=円)", "", b.text)
+        if not text.strip():
+            continue
+        span = max(b.x1 - b.x0, 1e-6)
+        n = max(len(text), 1)
+        pos = 0
+        for raw in text.split(" "):
+            if raw:
+                x0 = b.x0 + span * pos / n
+                x1 = b.x0 + span * (pos + len(raw)) / n
+                kind, value = classify_token(raw)
+                if kind:
+                    out.append((kind, value, x0, x1, b.cy, b.y0, b.y1))
+            pos += len(raw) + 1
+    return out
 
-    inside = [b for b in blocks if x0 <= b.cx <= x1 and y0 <= b.cy <= y1]
+
+def classify_token(t: str):
+    if m := PRICE_RE.match(t):
+        return "price", int(m.group(1).replace(",", ""))
+    if CODE_RE.match(t):
+        return "productCode", t
+    if JAN_RE.match(t):
+        return "jan", re.sub(r"[-\s]", "", t)
+    if QTY_RE.match(t):
+        return "quantity", t
+    if any(w in t for w in STYLE_WORDS) and not any(c.isdigit() for c in t):
+        return "style", t
+    return None, None
+
+
+def assign_details(cells, tokens):
+    """Attach each detail token to the cell it is printed under.
+
+    Returns (assigned, orphans); an orphan is a price or code with no cell above
+    it, which means the colour number for that cell was never recognised.
+
+    Earlier versions grew a rectangle outwards from each cell, which broke on the
+    シャーロット pages: OCR splits "特小CHS 221" so the inferred column lands on the
+    number and the codes beneath the prefix fall outside, while widening the
+    rectangle far enough to reach them also reaches the next column. Choosing the
+    nearest cell instead needs no rectangle — a token goes to whichever cell's
+    artwork-and-label box it sits closest to, which is unambiguous even when the
+    columns are offset.
+    """
+    boxes = []
+    for block, _label, rect, _forms, _ov, _cx in cells:
+        boxes.append(
+            (
+                min(rect.x0, block.x0),
+                max(rect.x1, block.x1),
+                min(rect.y0, block.y0),
+                max(rect.y1, block.y1),
+            )
+        )
+
+    assigned: dict[int, list] = {}
+    orphans: list = []
+    for kind, value, tx0, tx1, tcy, ty0, ty1 in tokens:
+        best, best_d = None, 1e9
+        for i, (bx0, bx1, by0, by1) in enumerate(boxes):
+            # A detail line sits below its cell's label, never above it.
+            if tcy < by0 - 2 or tcy > by1 + 34:
+                continue
+            dx = max(bx0 - tx1, tx0 - bx1, 0.0)
+            dy = max(by0 - tcy, tcy - by1, 0.0)
+            d = dx * 1.8 + dy
+            if d < best_d:
+                best, best_d = i, d
+        if best is not None and best_d < 40:
+            assigned.setdefault(best, []).append((kind, value, tx0, tcy))
+        elif kind in ("price", "productCode", "quantity", "style"):
+            orphans.append((kind, value, tx0, tx1, tcy, ty0, ty1))
+    return assigned, orphans
+
+
+def recover_missing_labels(page, raster, orphans, cols, pitch, tmp_dir):
+    """Find colour numbers Vision missed, by re-reading just where they belong.
+
+    A one- or two-digit colour number set in small type is the weakest thing on
+    these pages for OCR: on the Aiko chart the whole row — "Aiko 370円 800014" —
+    is read correctly while the "1" labelling it is not, which orphans the row.
+    Rather than guess the number from its neighbours, the label's own area is
+    re-rendered on its own at high resolution and read again; in isolation it is
+    an easy read, and a wrong guess is impossible because nothing is inferred.
+
+    Returns [(label, label_rect)] for the numbers recovered.
+    """
+    if not orphans:
+        return []
+
+    # Orphan tokens that sit on consecutive lines in the same place belong to one
+    # cell, so group them before looking for a single label above the group.
+    groups: list[list] = []
+    for tok in sorted(orphans, key=lambda t: (round(t[2] / 30), t[4])):
+        if groups:
+            prev = groups[-1][-1]
+            if abs(tok[2] - prev[2]) < 34 and 0 <= tok[4] - prev[4] < 22:
+                groups[-1].append(tok)
+                continue
+        groups.append([tok])
+
+    found = []
+    tried: set[tuple[int, int]] = set()
+    for gi, group in enumerate(groups):
+        gx0 = min(t[2] for t in group)
+        gy0 = min(t[5] for t in group)
+        # The number is printed above the group, flush with its column.
+        col = max([c for c in cols if c <= gx0 + 6], default=gx0)
+        probe = fitz.Rect(col - 5, gy0 - 17, col + min(pitch * 0.55, 60), gy0 - 0.5)
+        if probe.width < 6 or probe.height < 5:
+            continue
+        # One cell's orphaned lines can split into several groups; probing the
+        # same spot twice would add the same colour twice.
+        spot = (round(probe.x0), round(probe.y0))
+        if spot in tried:
+            continue
+        tried.add(spot)
+
+        path = os.path.join(tmp_dir, "probe-%d.png" % gi)
+        pix = page.get_pixmap(dpi=900, clip=probe)
+        pix.save(path)
+        try:
+            blocks = L.run_ocr_binary(path)
+        except Exception:
+            continue
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+        best = None
+        for b in blocks:
+            label = S.parse_color_label(b["t"])
+            if label and b["conf"] >= 0.3:
+                if best is None or b["conf"] > best[1]:
+                    best = (label, b["conf"])
+        if best:
+            found.append((best[0], probe))
+
+    # The same cell can be probed from two different column guesses; keep one
+    # entry per colour per row.
+    seen: set[tuple[str, int]] = set()
+    unique = []
+    for label, probe in found:
+        mark = (label.key, round(probe.y0 / 4))
+        if mark in seen:
+            continue
+        seen.add(mark)
+        unique.append((label, probe))
+    return unique
+
+
+def variants_from(tokens_for_cell):
+    """Group a cell's tokens into printed lines, one variant per line."""
     lines: list[list] = []
-    for b in sorted(inside, key=lambda b: b.cy):
-        if lines and abs(b.cy - lines[-1][0].cy) <= max(3.0, (b.y1 - b.y0) * 0.7):
-            lines[-1].append(b)
+    for tok in sorted(tokens_for_cell, key=lambda t: (t[3], t[2])):
+        # Printed lines in a cell are ~8pt apart, so a slightly generous tolerance
+        # keeps a price and its product code together when OCR reports their
+        # baselines a shade apart.
+        if lines and abs(tok[3] - lines[-1][0][3]) <= 4.5:
+            lines[-1].append(tok)
         else:
-            lines.append([b])
+            lines.append([tok])
 
     variants, jans = [], []
     for line in lines:
         v: dict = {}
-        for b in sorted(line, key=lambda b: b.x0):
-            # Vision sometimes returns a whole printed line as one block
-            # ("丸小 約6.5g入 180円 741911") and sometimes one block per field, so
-            # classify the individual tokens either way.
-            text = re.sub(r"(?<=[\d,])\s+(?=円)", "", b.text)
-            for t in text.split():
-                if m := PRICE_RE.match(t):
-                    v["price"] = int(m.group(1).replace(",", ""))
-                elif CODE_RE.match(t):
-                    v["productCode"] = t
-                elif JAN_RE.match(t):
-                    jans.append(re.sub(r"[-\s]", "", t))
-                elif QTY_RE.match(t):
-                    v["quantity"] = t
-                elif any(w in t for w in STYLE_WORDS):
-                    v["style"] = t
+        for kind, value, _x, _y in sorted(line, key=lambda t: t[2]):
+            if kind == "jan":
+                jans.append(value)
+            else:
+                v[kind] = value
         if "price" in v or "productCode" in v:
             variants.append(v)
+
+    # Some charts set one price across two size rows — "丸小 074798 / 100円 /
+    # 丸大 075153" — which reads as a bare price between two bare codes. Fold that
+    # shared price back into the rows it covers.
+    loose = [v for v in variants if "price" in v and "productCode" not in v]
+    priced = [v for v in variants if "productCode" in v and "price" not in v]
+    if len(loose) == 1 and priced:
+        for v in priced:
+            v["price"] = loose[0]["price"]
+        variants = [v for v in variants if v is not loose[0]]
     return variants, jans
 
 
@@ -320,6 +472,8 @@ def reconcile(label: S.ColorLabel, known: dict) -> tuple[str, str | None, str | 
 def main():
     doc = L.open_pdf()
     known = known_color_keys()
+    tmp_dir = os.path.join(L.BUILD, "probe")
+    os.makedirs(tmp_dir, exist_ok=True)
     # Filenames encode cell positions, so a re-run with changed geometry would
     # otherwise leave orphans behind.
     import shutil
@@ -327,7 +481,7 @@ def main():
     os.makedirs(os.path.join(L.BUILD, "swatches"), exist_ok=True)
 
     colors: dict[str, dict] = {}
-    report = {"pages": [], "unknownKeys": {}, "corrections": [], "layoutOverrides": []}
+    report = {"pages": [], "unknownKeys": {}, "corrections": [], "layoutOverrides": [], "recovered": []}
 
     for pno in sorted(CHART_PAGES):
         meta = CHART_PAGES[pno]
@@ -345,19 +499,28 @@ def main():
         cells, layout = ((embedded, "embedded") if len(embedded) >= len(derived)
                          else (derived, "derived"))
 
-        # Row boundary for detail capture: the next cell down in the same column.
-        # Measured from the colour number, since on pages that print the swatch
-        # above its label the price lines follow the label, not the artwork.
-        by_col: dict[int, list] = {}
-        for item in cells:
-            by_col.setdefault(round(item[0].x0 / 12), []).append(item)
-        next_y = {}
-        for col_items in by_col.values():
-            col_items.sort(key=lambda it: it[0].y0)
-            for i, it in enumerate(col_items):
-                floor = max(it[0].y1, it[2].y1) + 30
-                nxt = col_items[i + 1][0].y0 if i + 1 < len(col_items) else floor
-                next_y[id(it[0])] = min(nxt - 1.5, floor)
+        # Prices and product codes go to whichever cell they are printed under.
+        tokens = detail_tokens(blocks)
+        detail, orphans = assign_details(cells, tokens)
+
+        # Rows left without a cell mean their colour number went unread; re-read
+        # just that spot and add the cells it turns up.
+        if orphans and layout == "derived":
+            found = number_column_labels(blocks, page.rect.width)
+            cols = found[1] if found else []
+            pitch = (cols[1] - cols[0]) if len(cols) > 1 else page.rect.width * 0.22
+            recovered = recover_missing_labels(page, raster, orphans, cols, pitch, tmp_dir)
+            for label, probe in recovered:
+                guess = fitz.Rect(probe.x1 + 1.5, probe.y0 - 2, probe.x0 + pitch - 6, probe.y1 + 3)
+                rect = raster.trim(guess)
+                if rect is None or rect.width < 4 or rect.height < 3:
+                    continue
+                anchor = L.Block(label["raw"], 1.0, probe.x0, probe.y0, probe.x1, probe.y1)
+                cells.append((anchor, label, rect, [label["raw"]], text_overlap(rect, blocks, anchor),
+                              (probe.x0 - 3, probe.x0 + pitch)))
+                report["recovered"].append({"page": pno, "label": label["raw"]})
+            if recovered:
+                detail, _ = assign_details(cells, tokens)
 
         # Cells on a page are set to a common size, so a crop far off that size
         # swallowed something it should not have — a decorative graphic, a
@@ -372,9 +535,16 @@ def main():
 
         n_written = 0
         seen: dict[str, int] = {}
-        for block, label, rect, forms, overlap, cell_x in cells:
+        for cell_index, (block, label, rect, forms, overlap, cell_x) in enumerate(cells):
+            # A crop far off the page's usual cell size caught something it
+            # should not have: too large means a decorative graphic or a
+            # neighbouring row, too thin means the trim locked onto a table rule
+            # instead of the beads.
             oversized = med_w > 0 and (
-                rect.width > med_w * 2.2 or rect.height > med_h * 2.2
+                rect.width > med_w * 2.2
+                or rect.height > med_h * 2.2
+                or rect.height < med_h * 0.45
+                or rect.width < med_w * 0.25
             )
             key, base_key, note = reconcile(label, known)
             if note:
@@ -399,10 +569,7 @@ def main():
             img.save(out_path, "WEBP", quality=88, method=5)
             n_written += 1
 
-            variants, jans = cell_details(
-                blocks, block, rect, cell_x,
-                next_y.get(id(block), max(block.y1, rect.y1) + 30),
-            )
+            variants, jans = variants_from(detail.get(cell_index, []))
             rec = colors.setdefault(
                 key,
                 {
@@ -461,6 +628,7 @@ def main():
     print("with finish data : %d" % sum(1 for c in colors.values() if c["finishes"]))
     print("corrections      : %d" % len(report["corrections"]))
     print("unknown keys     : %d distinct / %d occurrences" % (len(report["unknownKeys"]), unknown))
+    print("recovered labels : %d" % len(report["recovered"]))
 
 
 if __name__ == "__main__":

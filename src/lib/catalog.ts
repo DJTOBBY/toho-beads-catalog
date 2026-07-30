@@ -38,6 +38,7 @@ export type BeadColor = {
   number: number;
   suffix: string;
   matte: boolean;
+  unverified: boolean;
   finishBase: string | null;
   finishes: FinishRef[];
   notes: string[];
@@ -149,6 +150,8 @@ export type ColorIndexEntry = {
   y: string[];
   sw: string;
   matte: boolean;
+  /** no crop on any page was clean enough to show */
+  unverified: boolean;
 };
 
 export function toIndex(colors: BeadColor[]): ColorIndexEntry[] {
@@ -166,6 +169,7 @@ export function toIndex(colors: BeadColor[]): ColorIndexEntry[] {
     y: c.salesStyles,
     sw: c.swatch,
     matte: c.matte,
+    unverified: c.unverified,
   }));
 }
 

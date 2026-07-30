@@ -336,14 +336,23 @@ export function CatalogBrowser({
                     className="flex aspect-[5/3] items-center justify-center overflow-hidden p-2"
                     style={{ background: "var(--swatch-bg)" }}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/swatches/${c.sw}`}
-                      alt={`カラーNo.${c.k} のビーズ`}
-                      loading="lazy"
-                      decoding="async"
-                      className="max-h-full max-w-full object-contain"
-                    />
+                    {c.unverified ? (
+                      <span
+                        className="text-[10px]"
+                        style={{ color: "#8b8379" }}
+                        title="この色は誌面から確実な画像を切り出せませんでした"
+                      >
+                        画像なし
+                      </span>
+                    ) : (
+                      <img
+                        src={`/swatches/${c.sw}`}
+                        alt={`カラーNo.${c.k} のビーズ`}
+                        loading="lazy"
+                        decoding="async"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    )}
                   </div>
                   <div className="flex items-center gap-2 px-2.5 py-2">
                     <span

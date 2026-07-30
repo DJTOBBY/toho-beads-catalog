@@ -54,17 +54,30 @@ export default async function ColorPage({ params }: Params) {
         </span>
       </nav>
 
-      <header className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
+      {/* The panel is sized to the artwork rather than the page, so it does not
+          leave a wide empty field around a 480px crop. */}
+      <header className="grid gap-6 md:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
         <div
           className="flex items-center justify-center overflow-hidden rounded-xl p-6"
           style={{ background: "var(--swatch-bg)", border: "1px solid var(--line)" }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/swatches/${color.swatch}`}
-            alt={`カラーNo.${color.key} のビーズ`}
-            className="max-h-[260px] w-full object-contain"
-          />
+          {color.unverified ? (
+            <p className="px-6 py-12 text-center text-[12px]" style={{ color: "#8b8379" }}>
+              このカラーは誌面から確実な画像を切り出せませんでした。
+              <br />
+              カタログ P.{color.appearances.map((a) => a.catalogPage).join(" / P.")} をご参照ください。
+            </p>
+          ) : (
+            /* Never scaled past its own pixels: the crops are 480px on their
+               long edge, and stretching one across this column softened the
+               beads. */
+            <img
+              src={`/swatches/${color.swatch}`}
+              alt={`カラーNo.${color.key} のビーズ`}
+              className="h-auto w-auto max-w-full object-contain"
+              style={{ maxHeight: 200 }}
+            />
+          )}
         </div>
 
         <div>
@@ -273,13 +286,18 @@ function SwatchRow({ colors, currentKey }: { colors: BeadColor[]; currentKey: st
                 className="flex aspect-[5/3] items-center justify-center p-2"
                 style={{ background: "var(--swatch-bg)" }}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/swatches/${c.swatch}`}
-                  alt={`カラーNo.${c.key}`}
-                  loading="lazy"
-                  className="max-h-full max-w-full object-contain"
-                />
+                {c.unverified ? (
+                  <span className="text-[10px]" style={{ color: "#8b8379" }}>
+                    画像なし
+                  </span>
+                ) : (
+                  <img
+                    src={`/swatches/${c.swatch}`}
+                    alt={`カラーNo.${c.key}`}
+                    loading="lazy"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                )}
               </div>
               <p className="tabnum px-2 py-1.5 text-[12px] font-medium">
                 {c.key}

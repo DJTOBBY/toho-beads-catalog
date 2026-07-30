@@ -74,8 +74,12 @@ def parse_color_label(text: str) -> ColorLabel | None:
     if not t:
         return None
     t = t.upper().replace("Α", "α")
+    # The charts separate a colour from the next cell's text with an interpunct
+    # and OCR often joins the two ("PF551・022213220"); the colour is the head.
+    if "・" in t:
+        t = t.split("・")[0].strip()
     t = ALPHA_PREFIX_RE.sub("α", t)
-    if t in NOT_A_COLOR or DIMENSION_RE.search(t):
+    if not t or t in NOT_A_COLOR or DIMENSION_RE.search(t):
         return None
 
     # Repairs turn letters into digits, so they may only run on a token that is
@@ -112,9 +116,10 @@ def parse_color_label_loose(text: str) -> ColorLabel | None:
     label = parse_color_label(text)
     if label:
         return label
+
+    t = text.strip()
     # Only a caption, not a sentence — otherwise the "＜例＞ α-3201" in a page's
     # ordering instructions would register as a product.
-    t = text.strip()
     parts = t.split()
     if 1 < len(parts) <= 4 and len(t) <= 24:
         return parse_color_label(parts[-1])

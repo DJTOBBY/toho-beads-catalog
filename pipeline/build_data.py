@@ -143,6 +143,11 @@ def build_catalog():
         # allowed to vote on the colour. Every colour keeps at least one.
         good = [a for a in apps if a["textOverlap"] <= MAX_TEXT_OVERLAP and not a["oversized"]]
         dropped += len(apps) - len(good)
+        # With no usable crop the entry is either a colour whose every cell was
+        # contaminated or, more often, a heading bar that parsed as a number
+        # ("着色ラスター" sits where a colour would). Either way the app must not
+        # present the crop as the bead, so it is flagged rather than shown.
+        unverified = not good
         if good:
             apps = good
         # Most colours are printed on several pages, so the appearances vote:
@@ -156,6 +161,7 @@ def build_catalog():
                 "number": c["number"],
                 "suffix": c["suffix"],
                 "matte": c["matte"],
+                "unverified": unverified,
                 "finishBase": c["finishBase"],
                 "finishes": c["finishes"],
                 "notes": suffix_notes(c["suffix"]),
