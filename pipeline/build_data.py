@@ -1,0 +1,295 @@
+"""Assemble the app's data files from the extraction outputs.
+
+Prices are deliberately kept out of the generated catalogue. They change, and
+this catalogue is the 2021 edition, so they live in `data/prices.json` — a plain
+file meant to be hand-edited. Re-running the pipeline regenerates the catalogue
+but never overwrites that file; `--reseed` is the explicit opt-in.
+
+Outputs:
+  data/catalog.json          colours, finishes, bead types, sales styles
+  data/prices.json           editable price layer (created once, then left alone)
+  data/prices.seed.json      what the catalogue printed, for reference/diffing
+  public/swatches/*.webp     swatch artwork the app serves
+"""
+
+from __future__ import annotations
+
+import argparse
+import colorsys
+import json
+import os
+import shutil
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lib_pdf as L
+from bead_types import BEAD_TYPES, SALES_STYLES
+from page_map import CHART_PAGES, NON_CHART_PAGES
+
+DATA = os.path.join(L.REPO, "data")
+
+# Above this fraction of a swatch region covered by type, the crop landed on the
+# neighbouring labels instead of the beads.
+MAX_TEXT_OVERLAP = 0.02
+PUBLIC_SWATCHES = os.path.join(L.REPO, "public", "swatches")
+
+EDITION = "2021年10月時点（第1部・第2部）"
+PRICE_NOTE = (
+    "掲載価格は2021年カタログ時点の本体価格（定価・税抜）です。"
+    "価格は変更される場合があるため、data/prices.json を編集して最新の価格に更新できます。"
+)
+
+# Hue families for the colour filter. Ranges are in degrees on the HSV wheel.
+HUE_FAMILIES = [
+    ("レッド", 345, 10),
+    ("オレンジ", 10, 45),
+    ("イエロー", 45, 70),
+    ("グリーン", 70, 160),
+    ("ブルー", 160, 250),
+    ("パープル", 250, 290),
+    ("ピンク", 290, 345),
+]
+
+
+def color_metrics(rgb) -> dict:
+    r, g, b = (v / 255 for v in rgb)
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    hue = h * 360
+    family = "ニュートラル"
+    if s >= 0.12:
+        for name, lo, hi in HUE_FAMILIES:
+            if lo <= hi:
+                if lo <= hue < hi:
+                    family = name
+                    break
+            elif hue >= lo or hue < hi:
+                family = name
+                break
+    else:
+        family = "ホワイト" if v > 0.82 else "ブラック" if v < 0.25 else "グレー"
+    return {
+        "hex": "#%02x%02x%02x" % tuple(rgb),
+        "hue": round(hue),
+        "sat": round(s, 3),
+        "val": round(v, 3),
+        "family": family,
+    }
+
+
+def tone_label(suffix: str) -> str | None:
+    """The catalogue's tone gradation: 5L(淡) ← 5A, 5, 5B, 5C, 5D, 5H (濃)."""
+    order = {"L": "最も淡い", "A": "淡い", "B": "やや濃い", "C": "濃い", "D": "より濃い", "H": "最も濃い"}
+    letters = [c for c in suffix if c in order]
+    return order[letters[0]] if letters else None
+
+
+def suffix_notes(suffix: str) -> list[str]:
+    out = []
+    if tone := tone_label(suffix):
+        out.append("色調: %s" % tone)
+    if suffix.endswith("FM"):
+        out.append("FM: 着色またはパールのつや消し加工（つや消しが強い）")
+    elif suffix.endswith("F"):
+        out.append("F: つや消し（frosted）加工")
+    if "S" in suffix:
+        out.append("S: 銀メッキ系の同色番")
+    if "U" in suffix:
+        out.append("U: ダブルスリーカット系の同色番")
+    return out
+
+
+def consensus_color(apps: list[dict]) -> tuple[dict, dict]:
+    """Pick a colour's true reading by majority vote across its appearances.
+
+    Every crop can only lose colour to the cell background or, rarely, land on
+    the wrong cell — both are outliers. Taking the per-channel median across all
+    the pages a colour is printed on cancels them out, and the appearance nearest
+    that median supplies the swatch image to show.
+    """
+    rgbs = [a["avgColor"] for a in apps]
+    med = [sorted(ch)[len(ch) // 2] for ch in zip(*rgbs)]
+
+    def distance(a: dict) -> int:
+        return sum(abs(x - y) for x, y in zip(a["avgColor"], med))
+
+    rep = min(apps, key=lambda a: (distance(a), a["catalogPage"]))
+    spread = max(distance(a) for a in apps) if len(apps) > 1 else 0
+    metrics = color_metrics(tuple(med))
+    metrics["appearanceCount"] = len(apps)
+    metrics["spread"] = spread
+    return rep, metrics
+
+
+def load(name: str):
+    with open(os.path.join(L.BUILD, name), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def build_catalog():
+    colors = load("colors.json")
+    finishes = load("finishes.json")
+
+    line_index: dict[str, set] = {}
+    for c in colors:
+        for app in c["appearances"]:
+            app["color"] = color_metrics(app["avgColor"])
+            line_index.setdefault(app["line"], set()).update(app["beadTypes"])
+
+    out_colors = []
+    dropped = 0
+    for c in colors:
+        apps = sorted(c["appearances"], key=lambda a: (a["catalogPage"], a["printedAs"]))
+        # A crop with type in it missed the artwork, so it must not be shown or
+        # allowed to vote on the colour. Every colour keeps at least one.
+        good = [a for a in apps if a["textOverlap"] <= MAX_TEXT_OVERLAP and not a["oversized"]]
+        dropped += len(apps) - len(good)
+        if good:
+            apps = good
+        # Most colours are printed on several pages, so the appearances vote:
+        # the colour is their per-channel median and the representative swatch is
+        # whichever appearance sits closest to it. That is robust to the occasional
+        # mis-cropped cell in a way that picking any single page is not.
+        rep, consensus = consensus_color(apps)
+        out_colors.append(
+            {
+                "key": c["key"],
+                "number": c["number"],
+                "suffix": c["suffix"],
+                "matte": c["matte"],
+                "finishBase": c["finishBase"],
+                "finishes": c["finishes"],
+                "notes": suffix_notes(c["suffix"]),
+                "color": consensus,
+                "swatch": rep["swatch"],
+                "lines": sorted({a["line"] for a in apps}),
+                "beadTypes": sorted({t for a in apps for t in a["beadTypes"]}),
+                "salesStyles": sorted({a["salesStyle"] for a in apps}),
+                "appearances": [
+                    {
+                        "catalogPage": a["catalogPage"],
+                        "line": a["line"],
+                        "beadTypes": a["beadTypes"],
+                        "salesStyle": a["salesStyle"],
+                        "printedAs": a["printedAs"],
+                        "printedForms": a["printedForms"],
+                        "linePrefix": a["linePrefix"],
+                        "swatch": a["swatch"],
+                        "color": a["color"],
+                        "variants": a["variants"],
+                    }
+                    for a in apps
+                ],
+            }
+        )
+
+    out_colors.sort(key=lambda c: (c["number"], c["suffix"]))
+    return {
+        "meta": {
+            "title": "TOHO BEADS カタログ",
+            "edition": EDITION,
+            "source": "ビーズカタログ2021 第1部・第2部",
+            "priceNote": PRICE_NOTE,
+            "colorCount": len(out_colors),
+            "appearanceCount": sum(len(c["appearances"]) for c in out_colors),
+            "pageCount": len(CHART_PAGES) + len(NON_CHART_PAGES),
+            "droppedAppearances": dropped,
+        },
+        "finishes": finishes["finishes"],
+        "methods": [
+            {"mark": "①", "name": "ラスター", "note": "ビーズの表面に、白色の照りを加えること。"},
+            {"mark": "②", "name": "オーロラ", "note": "ビーズの表面に、レインボー光沢の照りを加えること。"},
+            {"mark": "③", "name": "着色", "note": "ビーズに塗料及び染料で色を着けたもの。"},
+            {"mark": "④", "name": "PF", "note": "従来の同色番に比べて摩擦に強く、色が落ちにくくなっています。"},
+            {"mark": "⑤", "name": "蛍光", "note": "ネオンのように鮮やかに発色する色です。"},
+            {"mark": "⑥", "name": "つや消し（F）", "note": "ビーズの表面をすりガラス状につや消し加工したもの。Fはfrostedの略字。"},
+            {"mark": "⑦", "name": "L・A・B・C・D・H", "note": "色調を表す記号。5L(淡)←5A・5・5B・5C・5D・5H(濃)。"},
+            {"mark": "⑧", "name": "FM", "note": "着色またはパールのつや消し加工で、つや消しが強いもの。"},
+        ],
+        "beadTypes": BEAD_TYPES,
+        "salesStyles": SALES_STYLES,
+        "lines": [
+            {"name": name, "beadTypes": sorted(types)}
+            for name, types in sorted(line_index.items())
+        ],
+        "colors": out_colors,
+    }
+
+
+def build_price_seed(catalog) -> dict:
+    """Every product code the catalogue printed, with its printed price."""
+    entries: dict[str, dict] = {}
+    for c in catalog["colors"]:
+        for app in c["appearances"]:
+            for v in app["variants"]:
+                code = v.get("productCode")
+                if not code:
+                    continue
+                entries[code] = {
+                    "colorKey": c["key"],
+                    "line": app["line"],
+                    "style": v.get("style") or app["salesStyle"],
+                    "quantity": v.get("quantity"),
+                    "price": v.get("price"),
+                    "catalogPage": app["catalogPage"],
+                }
+    return {
+        "meta": {
+            "note": PRICE_NOTE,
+            "currency": "JPY",
+            "taxIncluded": False,
+            "priceKind": "定価（本体価格）",
+            "edition": EDITION,
+            "codeCount": len(entries),
+        },
+        "prices": dict(sorted(entries.items())),
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--reseed", action="store_true",
+                    help="data/prices.json を種データで上書きする（手編集を破棄）")
+    args = ap.parse_args()
+
+    os.makedirs(DATA, exist_ok=True)
+    catalog = build_catalog()
+    with open(os.path.join(DATA, "catalog.json"), "w", encoding="utf-8") as fh:
+        json.dump(catalog, fh, ensure_ascii=False, separators=(",", ":"))
+
+    seed = build_price_seed(catalog)
+    with open(os.path.join(DATA, "prices.seed.json"), "w", encoding="utf-8") as fh:
+        json.dump(seed, fh, ensure_ascii=False, indent=1)
+
+    live = os.path.join(DATA, "prices.json")
+    if args.reseed or not os.path.exists(live):
+        with open(live, "w", encoding="utf-8") as fh:
+            json.dump(seed, fh, ensure_ascii=False, indent=1)
+        print("wrote data/prices.json (%d codes)" % seed["meta"]["codeCount"])
+    else:
+        print("kept existing data/prices.json — 手編集は保持されます（--reseed で再生成）")
+
+    # Only the swatches the catalogue actually references are served: the crops
+    # dropped as low-quality stay in build/ for inspection but never ship.
+    # Replaced rather than merged, so a changed cell set leaves no orphans.
+    wanted = {c["swatch"] for c in catalog["colors"]}
+    wanted |= {a["swatch"] for c in catalog["colors"] for a in c["appearances"]}
+    shutil.rmtree(PUBLIC_SWATCHES, ignore_errors=True)
+    os.makedirs(PUBLIC_SWATCHES, exist_ok=True)
+    src = os.path.join(L.BUILD, "swatches")
+    n = 0
+    for name in sorted(wanted):
+        shutil.copy2(os.path.join(src, name), os.path.join(PUBLIC_SWATCHES, name))
+        n += 1
+
+    print("colours   : %d" % catalog["meta"]["colorCount"])
+    print("dropped   : %d low-quality appearances" % catalog["meta"]["droppedAppearances"])
+    print("appearances: %d" % catalog["meta"]["appearanceCount"])
+    print("swatches  : %d copied to public/swatches" % n)
+    fams: dict[str, int] = {}
+    for c in catalog["colors"]:
+        fams[c["color"]["family"]] = fams.get(c["color"]["family"], 0) + 1
+    print("hue families:", dict(sorted(fams.items(), key=lambda kv: -kv[1])))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,12 @@
+# Pipeline intermediates: page renders, OCR JSON, the compiled OCR helper and the
+# verification sheets. All regenerable from the source PDF.
+build/
+
+# Next.js / tooling
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+.DS_Store

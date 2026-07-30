@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/*
+ * The palette stays deliberately quiet — nearly every pixel of this app is a
+ * bead photograph, and any saturated chrome would fight the merchandise for
+ * attention. Warm neutrals read as paper; the accent is used only for state.
+ */
+@theme {
+  --color-paper: #faf8f5;
+  --color-paper-2: #f2eee8;
+  --color-ink: #1b1a19;
+  --color-ink-2: #55504b;
+  --color-ink-3: #8b8379;
+  --color-line: #e2dbd1;
+  --color-accent: #9a5b3f;
+  --color-accent-soft: #f0e2d8;
+
+  --font-sans: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic",
+    "Noto Sans JP", system-ui, sans-serif;
+
+  --radius-tile: 0.5rem;
+}
+
+:root {
+  --bg: var(--color-paper);
+  --bg-2: var(--color-paper-2);
+  --fg: var(--color-ink);
+  --fg-2: var(--color-ink-2);
+  --fg-3: var(--color-ink-3);
+  --line: var(--color-line);
+  --accent: var(--color-accent);
+  --accent-soft: var(--color-accent-soft);
+  /* Swatch cells always sit on white: the catalogue photographed the beads on
+     white, so anything else shifts how the colour reads. */
+  --swatch-bg: #ffffff;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17161a;
+    --bg-2: #201e23;
+    --fg: #f3efe9;
+    --fg-2: #c3bcb3;
+    --fg-3: #8d867d;
+    --line: #322f36;
+    --accent: #d9a184;
+    --accent-soft: #382b25;
+    --swatch-bg: #f7f5f2;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #17161a;
+  --bg-2: #201e23;
+  --fg: #f3efe9;
+  --fg-2: #c3bcb3;
+  --fg-3: #8d867d;
+  --line: #322f36;
+  --accent: #d9a184;
+  --accent-soft: #382b25;
+  --swatch-bg: #f7f5f2;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: var(--color-paper);
+  --bg-2: var(--color-paper-2);
+  --fg: var(--color-ink);
+  --fg-2: var(--color-ink-2);
+  --fg-3: var(--color-ink-3);
+  --line: var(--color-line);
+  --accent: var(--color-accent);
+  --accent-soft: var(--color-accent-soft);
+  --swatch-bg: #ffffff;
+  color-scheme: light;
+}
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "palt" 1;
+}
+
+/* Long tables and swatch rows scroll inside themselves rather than pushing the
+   page sideways. */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tabnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

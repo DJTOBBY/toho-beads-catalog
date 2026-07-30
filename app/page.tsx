@@ -1,0 +1,75 @@
+import { CatalogBrowser } from "@/components/CatalogBrowser";
+import { getCatalog, getPrices, toIndex } from "@/lib/catalog";
+
+export default async function HomePage() {
+  const [catalog, prices] = await Promise.all([getCatalog(), getPrices()]);
+
+  const finishGroups = catalog.finishes.map((f) => ({
+    finish: f.name,
+    variations: f.variations.map((v) => v.name),
+  }));
+
+  const beadGroups: { group: string; types: { key: string; name: string }[] }[] = [];
+  for (const t of catalog.beadTypes) {
+    const last = beadGroups.at(-1);
+    if (last?.group === t.group) last.types.push({ key: t.key, name: t.name });
+    else beadGroups.push({ group: t.group, types: [{ key: t.key, name: t.name }] });
+  }
+
+  // One searchable string of product codes per colour, so typing a 品番 finds it.
+  const codeIndex: Record<string, string> = {};
+  for (const [code, entry] of Object.entries(prices.prices)) {
+    codeIndex[entry.colorKey] = (codeIndex[entry.colorKey] ?? "") + code + " ";
+  }
+
+  const withPrice = new Set(Object.values(prices.prices).map((p) => p.colorKey));
+
+  return (
+    <>
+      <section className="pt-10 sm:pt-14">
+        <h1 className="max-w-3xl text-[26px] font-semibold leading-tight tracking-tight sm:text-[34px]">
+          トーホービーズの
+          <wbr />
+          グラスビーズを、
+          <span style={{ color: "var(--accent)" }}>色から</span>
+          探す。
+        </h1>
+        <p
+          className="mt-3 max-w-2xl text-[14px] leading-relaxed sm:text-[15px]"
+          style={{ color: "var(--fg-2)" }}
+        >
+          カタログ掲載の
+          <strong className="tabnum font-semibold" style={{ color: "var(--fg)" }}>
+            {catalog.meta.colorCount}
+          </strong>
+          色を、カラーNo.・品番・仕上げ加工・ビーズ種別で絞り込めます。
+          色見本をタップすると、その色がどのビーズで作られているかがわかります。
+        </p>
+        <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-[12px]">
+          <Stat label="収録カラー" value={`${catalog.meta.colorCount} 色`} />
+          <Stat label="掲載バリエーション" value={`${catalog.meta.appearanceCount} 件`} />
+          <Stat label="仕上げ加工" value={`${catalog.finishes.length} 種類`} />
+          <Stat label="価格収録" value={`${withPrice.size} 色 / ${prices.meta.codeCount} 品番`} />
+          <Stat label="版" value={catalog.meta.edition} />
+        </dl>
+      </section>
+
+      <CatalogBrowser
+        colors={toIndex(catalog.colors)}
+        finishGroups={finishGroups}
+        beadGroups={beadGroups}
+        salesStyles={[...new Set(catalog.colors.flatMap((c) => c.salesStyles))].sort()}
+        codeIndex={codeIndex}
+      />
+    </>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt style={{ color: "var(--fg-3)" }}>{label}</dt>
+      <dd className="tabnum mt-0.5 text-[14px] font-medium">{value}</dd>
+    </div>
+  );
+}
