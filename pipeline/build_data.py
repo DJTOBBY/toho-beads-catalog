@@ -215,10 +215,16 @@ def build_catalog():
     }
 
 
-def build_price_seed(catalog) -> dict:
-    """Every product code the catalogue printed, with its printed price."""
+def build_price_seed(raw_colors) -> dict:
+    """Every product code the catalogue printed, with its printed price.
+
+    Read from the unfiltered extraction rather than the catalogue: a cell can be
+    dropped because its *crop* caught some type, which says nothing about the
+    price and product code printed beside it. Discarding those too would lose
+    codes the search box should still find.
+    """
     entries: dict[str, dict] = {}
-    for c in catalog["colors"]:
+    for c in raw_colors:
         for app in c["appearances"]:
             for v in app["variants"]:
                 code = v.get("productCode")
@@ -256,7 +262,7 @@ def main():
     with open(os.path.join(DATA, "catalog.json"), "w", encoding="utf-8") as fh:
         json.dump(catalog, fh, ensure_ascii=False, separators=(",", ":"))
 
-    seed = build_price_seed(catalog)
+    seed = build_price_seed(load("colors.json"))
     with open(os.path.join(DATA, "prices.seed.json"), "w", encoding="utf-8") as fh:
         json.dump(seed, fh, ensure_ascii=False, indent=1)
 

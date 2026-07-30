@@ -132,7 +132,12 @@ def chart_cells(page, blocks, raster):
             if best is None or score < best[0]:
                 best = (score, rect)
         if best:
-            out.append((b, label, best[1], forms, text_overlap(best[1], blocks, b)))
+            # The printed cell spans its whole column, which is wider than the
+            # trimmed artwork; prices and product codes are set across that full
+            # width, so they need the column bounds rather than the crop's.
+            out.append(
+                (b, label, best[1], forms, text_overlap(best[1], blocks, b), (col - 3, right + 2))
+            )
     return out
 
 
@@ -172,7 +177,8 @@ def photo_cells(page, blocks, raster):
             if best and best_d < 60:
                 # The rectangle comes from the PDF itself, so it is the swatch by
                 # definition — captions printed over a photo are not a defect.
-                out.append((best[0], best[1], r, [best[1]["raw"]], 0.0))
+                cell_x = (min(r.x0, best[0].x0) - 4, max(r.x1, best[0].x1) + 4)
+                out.append((best[0], best[1], r, [best[1]["raw"]], 0.0, cell_x))
         return out
 
     return []
@@ -205,16 +211,20 @@ def mean_overlap(cells) -> float:
     return sum(cell[4] for cell in cells) / len(cells)
 
 
-def cell_details(blocks, label_block, rect, next_row_y):
+def cell_details(blocks, label_block, rect, cell_x, next_row_y):
     """The variants printed inside one cell.
 
     Pages that print prices inline set one line per sales style — "Aiko 370円
     800014" above "Treasure 100円 815001" — so tokens are grouped by their
     baseline and each line becomes one variant. Only these pages carry prices at
     all; for the rest of the catalogue the price list is a separate section.
+
+    The horizontal range is the cell's column, not the cropped artwork: the
+    price lines run the full width of the cell, so measuring from the trimmed
+    swatch would drop the product code sitting at its right edge.
     """
-    x0, x1 = min(label_block.x0, rect.x0) - 2, rect.x1 + 4
-    y0, y1 = rect.y0 - 2, next_row_y
+    x0, x1 = cell_x
+    y0, y1 = min(rect.y0, label_block.y0) - 2, next_row_y
 
     inside = [b for b in blocks if x0 <= b.cx <= x1 and y0 <= b.cy <= y1]
     lines: list[list] = []
@@ -228,18 +238,21 @@ def cell_details(blocks, label_block, rect, next_row_y):
     for line in lines:
         v: dict = {}
         for b in sorted(line, key=lambda b: b.x0):
-            t = b.text.strip()
-            flat = t.replace(" ", "")
-            if m := PRICE_RE.match(flat):
-                v["price"] = int(m.group(1).replace(",", ""))
-            elif CODE_RE.match(flat):
-                v["productCode"] = flat
-            elif JAN_RE.match(flat):
-                jans.append(re.sub(r"[-\s]", "", flat))
-            elif QTY_RE.match(t):
-                v["quantity"] = t
-            elif any(w in t for w in STYLE_WORDS):
-                v["style"] = t
+            # Vision sometimes returns a whole printed line as one block
+            # ("丸小 約6.5g入 180円 741911") and sometimes one block per field, so
+            # classify the individual tokens either way.
+            text = re.sub(r"(?<=[\d,])\s+(?=円)", "", b.text)
+            for t in text.split():
+                if m := PRICE_RE.match(t):
+                    v["price"] = int(m.group(1).replace(",", ""))
+                elif CODE_RE.match(t):
+                    v["productCode"] = t
+                elif JAN_RE.match(t):
+                    jans.append(re.sub(r"[-\s]", "", t))
+                elif QTY_RE.match(t):
+                    v["quantity"] = t
+                elif any(w in t for w in STYLE_WORDS):
+                    v["style"] = t
         if "price" in v or "productCode" in v:
             variants.append(v)
     return variants, jans
@@ -333,6 +346,8 @@ def main():
                          else (derived, "derived"))
 
         # Row boundary for detail capture: the next cell down in the same column.
+        # Measured from the colour number, since on pages that print the swatch
+        # above its label the price lines follow the label, not the artwork.
         by_col: dict[int, list] = {}
         for item in cells:
             by_col.setdefault(round(item[0].x0 / 12), []).append(item)
@@ -340,8 +355,9 @@ def main():
         for col_items in by_col.values():
             col_items.sort(key=lambda it: it[0].y0)
             for i, it in enumerate(col_items):
-                nxt = col_items[i + 1][0].y0 if i + 1 < len(col_items) else it[2].y1 + 26
-                next_y[id(it[0])] = min(nxt - 1.5, it[2].y1 + 30)
+                floor = max(it[0].y1, it[2].y1) + 30
+                nxt = col_items[i + 1][0].y0 if i + 1 < len(col_items) else floor
+                next_y[id(it[0])] = min(nxt - 1.5, floor)
 
         # Cells on a page are set to a common size, so a crop far off that size
         # swallowed something it should not have — a decorative graphic, a
@@ -356,7 +372,7 @@ def main():
 
         n_written = 0
         seen: dict[str, int] = {}
-        for block, label, rect, forms, overlap in cells:
+        for block, label, rect, forms, overlap, cell_x in cells:
             oversized = med_w > 0 and (
                 rect.width > med_w * 2.2 or rect.height > med_h * 2.2
             )
@@ -384,7 +400,8 @@ def main():
             n_written += 1
 
             variants, jans = cell_details(
-                blocks, block, rect, next_y.get(id(block), rect.y1 + 26)
+                blocks, block, rect, cell_x,
+                next_y.get(id(block), max(block.y1, rect.y1) + 30),
             )
             rec = colors.setdefault(
                 key,
