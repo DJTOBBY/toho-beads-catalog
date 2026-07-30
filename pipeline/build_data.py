@@ -21,6 +21,8 @@ import os
 import shutil
 import sys
 
+from PIL import Image
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib_pdf as L
 from bead_types import BEAD_TYPES, SALES_STYLES
@@ -31,6 +33,11 @@ DATA = os.path.join(L.REPO, "data")
 # Above this fraction of a swatch region covered by type, the crop landed on the
 # neighbouring labels instead of the beads.
 MAX_TEXT_OVERLAP = 0.02
+
+# Cells on a page are drawn to one size, so a crop whose proportions are well off
+# that page's norm is not the beads — it is a rule, a tint band or a fragment of
+# the layout. The window is wide enough to leave genuine cells alone.
+ASPECT_WINDOW = (0.80, 1.35)
 PUBLIC_SWATCHES = os.path.join(L.REPO, "public", "swatches")
 
 EDITION = "2021年10月時点（第1部・第2部）"
@@ -98,26 +105,97 @@ def suffix_notes(suffix: str) -> list[str]:
     return out
 
 
+THUMB = (12, 4)
+
+
+def _fingerprint(swatch: str) -> list[float] | None:
+    """A crop reduced to a handful of pixels, for comparing crops to each other.
+
+    Comparing average colours alone cannot tell a bead strip from a coloured rule
+    that happens to average out the same. A tiny thumbnail keeps enough of the
+    layout — beads repeat across the strip, a rule is flat — to make the odd one
+    out obvious.
+    """
+    path = os.path.join(L.BUILD, "swatches", swatch)
+    if not os.path.exists(path):
+        return None
+    with Image.open(path) as im:
+        small = im.convert("RGB").resize(THUMB, Image.BILINEAR)
+    return [v for px in small.getdata() for v in px]
+
+
 def consensus_color(apps: list[dict]) -> tuple[dict, dict]:
     """Pick a colour's true reading by majority vote across its appearances.
 
-    Every crop can only lose colour to the cell background or, rarely, land on
-    the wrong cell — both are outliers. Taking the per-channel median across all
-    the pages a colour is printed on cancels them out, and the appearance nearest
-    that median supplies the swatch image to show.
+    A crop can lose colour to the cell background or, occasionally, land on a
+    rule or a heading instead of the beads. Both are outliers among the several
+    pages a colour is printed on, so the appearances vote: the colour is their
+    per-channel median, and the swatch shown is the appearance whose *image* is
+    most like its siblings — compared as thumbnails, since a mis-crop can match
+    on average colour while looking nothing like the beads.
     """
     rgbs = [a["avgColor"] for a in apps]
     med = [sorted(ch)[len(ch) // 2] for ch in zip(*rgbs)]
 
-    def distance(a: dict) -> int:
+    def colour_distance(a: dict) -> int:
         return sum(abs(x - y) for x, y in zip(a["avgColor"], med))
 
-    rep = min(apps, key=lambda a: (distance(a), a["catalogPage"]))
-    spread = max(distance(a) for a in apps) if len(apps) > 1 else 0
+    rep = None
+    if len(apps) >= 3:
+        prints = {id(a): _fingerprint(a["swatch"]) for a in apps}
+        usable = [a for a in apps if prints[id(a)]]
+        if len(usable) >= 3:
+            columns = list(zip(*(prints[id(a)] for a in usable)))
+            typical = [sorted(col)[len(col) // 2] for col in columns]
+            rep = min(
+                usable,
+                key=lambda a: (
+                    sum(abs(v - t) for v, t in zip(prints[id(a)], typical)),
+                    a["catalogPage"],
+                ),
+            )
+
+    if rep is None:
+        rep = min(apps, key=lambda a: (colour_distance(a), a["catalogPage"]))
+
+    spread = max(colour_distance(a) for a in apps) if len(apps) > 1 else 0
     metrics = color_metrics(tuple(med))
     metrics["appearanceCount"] = len(apps)
     metrics["spread"] = spread
     return rep, metrics
+
+
+def aspect_outliers(colors) -> set[str]:
+    """Swatch files whose proportions do not match the rest of their page.
+
+    Rules and tint bands survive the text-overlap check — no type sits on them —
+    but they are far longer and thinner than a bead strip. Comparing each crop
+    against the median shape of its own page catches them without needing to
+    know what a bead looks like.
+    """
+    by_page: dict[int, list[tuple[str, float]]] = {}
+    for c in colors:
+        for a in c["appearances"]:
+            path = os.path.join(L.BUILD, "swatches", a["swatch"])
+            if not os.path.exists(path):
+                continue
+            with Image.open(path) as im:
+                w, h = im.size
+            if h:
+                by_page.setdefault(a["pdfPage"], []).append((a["swatch"], w / h))
+
+    odd: set[str] = set()
+    lo, hi = ASPECT_WINDOW
+    for entries in by_page.values():
+        ratios = sorted(r for _, r in entries)
+        median = ratios[len(ratios) // 2]
+        if median <= 0:
+            continue
+        for name, ratio in entries:
+            rel = ratio / median
+            if rel < lo or rel > hi:
+                odd.add(name)
+    return odd
 
 
 def load(name: str):
@@ -128,6 +206,8 @@ def load(name: str):
 def build_catalog():
     colors = load("colors.json")
     finishes = load("finishes.json")
+
+    misshapen = aspect_outliers(colors)
 
     line_index: dict[str, set] = {}
     for c in colors:
@@ -141,7 +221,13 @@ def build_catalog():
         apps = sorted(c["appearances"], key=lambda a: (a["catalogPage"], a["printedAs"]))
         # A crop with type in it missed the artwork, so it must not be shown or
         # allowed to vote on the colour. Every colour keeps at least one.
-        good = [a for a in apps if a["textOverlap"] <= MAX_TEXT_OVERLAP and not a["oversized"]]
+        good = [
+            a
+            for a in apps
+            if a["textOverlap"] <= MAX_TEXT_OVERLAP
+            and not a["oversized"]
+            and a["swatch"] not in misshapen
+        ]
         dropped += len(apps) - len(good)
         # With no usable crop the entry is either a colour whose every cell was
         # contaminated or, more often, a heading bar that parsed as a number
