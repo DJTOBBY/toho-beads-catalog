@@ -9,7 +9,7 @@ import {
   getPrices,
   toneSiblings,
 } from "@/lib/catalog";
-import { contrastInk, hexToOklab, oklabDistance } from "@/lib/color";
+import { contrastInk, hexToOklab, oklabDistance, swatchUrl } from "@/lib/color";
 
 type Params = { params: Promise<{ key: string }> };
 
@@ -72,7 +72,7 @@ export default async function ColorPage({ params }: Params) {
                long edge, and stretching one across this column softened the
                beads. */
             <img
-              src={`/swatches/${color.swatch}`}
+              src={swatchUrl(color.swatch, color.swatchSource)}
               alt={`カラーNo.${color.key} のビーズ`}
               className="h-auto w-auto max-w-full object-contain"
               style={{ maxHeight: 200 }}
@@ -292,7 +292,7 @@ function SwatchRow({ colors, currentKey }: { colors: BeadColor[]; currentKey: st
                   </span>
                 ) : (
                   <img
-                    src={`/swatches/${c.swatch}`}
+                    src={swatchUrl(c.swatch, c.swatchSource)}
                     alt={`カラーNo.${c.key}`}
                     loading="lazy"
                     className="max-h-full max-w-full object-contain"

@@ -85,3 +85,9 @@ export const FAMILY_SWATCH: Record<string, string> = {
   ブラック: "#33333a",
   ニュートラル: "#c2b8ac",
 };
+
+
+/** Where a swatch image is served from, given its source. */
+export function swatchUrl(name: string, source: "official" | "catalog"): string {
+  return `${source === "official" ? "/official" : "/swatches"}/${name}`;
+}

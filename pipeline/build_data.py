@@ -39,6 +39,9 @@ MAX_TEXT_OVERLAP = 0.02
 # the layout. The window is wide enough to leave genuine cells alone.
 ASPECT_WINDOW = (0.80, 1.35)
 PUBLIC_SWATCHES = os.path.join(L.REPO, "public", "swatches")
+PUBLIC_OFFICIAL = os.path.join(L.REPO, "public", "official")
+OFFICIAL_JSON = os.path.join(L.BUILD, "web", "official.json")
+OFFICIAL_IMG = os.path.join(L.BUILD, "web", "img")
 
 EDITION = "2021年10月時点（第1部・第2部）"
 PRICE_NOTE = (
@@ -198,6 +201,38 @@ def aspect_outliers(colors) -> set[str]:
     return odd
 
 
+def load_official() -> dict:
+    """TOHO's own product index, keyed by catalogue colour number.
+
+    The printed cells have to be cut out of outlined artwork, and a few per cent
+    of those cuts land on a rule or a heading. The company photographs every
+    colour for its own site, so where a colour appears there the photograph is
+    simply a better picture of the bead than anything the PDF can yield.
+    """
+    if not os.path.exists(OFFICIAL_JSON):
+        return {}
+    with open(OFFICIAL_JSON, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def official_color(name: str) -> tuple[int, int, int] | None:
+    """Representative colour of an official photo, ignoring its white ground."""
+    path = os.path.join(OFFICIAL_IMG, name)
+    if not os.path.exists(path):
+        return None
+    with Image.open(path) as im:
+        small = im.convert("RGB").resize((48, 16), Image.BILINEAR)
+    px = list(small.getdata())
+    # The photos are beads on white; drop the ground before averaging.
+    beads = [p for p in px if not (p[0] > 232 and p[1] > 232 and p[2] > 232)]
+    if len(beads) < 12:
+        beads = px
+    beads.sort(key=sum)
+    core = beads[len(beads) // 10 : max(len(beads) * 9 // 10, len(beads) // 10 + 1)]
+    n = len(core)
+    return tuple(sum(c[i] for c in core) // n for i in range(3))
+
+
 def load(name: str):
     with open(os.path.join(L.BUILD, name), encoding="utf-8") as fh:
         return json.load(fh)
@@ -208,6 +243,7 @@ def build_catalog():
     finishes = load("finishes.json")
 
     misshapen = aspect_outliers(colors)
+    official = load_official()
 
     line_index: dict[str, set] = {}
     for c in colors:
@@ -241,6 +277,23 @@ def build_catalog():
         # whichever appearance sits closest to it. That is robust to the occasional
         # mis-cropped cell in a way that picking any single page is not.
         rep, consensus = consensus_color(apps)
+
+        # Where TOHO publishes a photograph of the colour, that is the picture to
+        # show and the colour to trust: it is the same product shot on a plain
+        # ground, rather than a region cut out of printed artwork.
+        site = official.get(c["key"])
+        swatch = rep["swatch"]
+        source = "catalog"
+        if site:
+            rgb = official_color(site["primary"])
+            if rgb:
+                consensus = {**color_metrics(rgb),
+                             "appearanceCount": consensus["appearanceCount"],
+                             "spread": consensus["spread"]}
+                swatch = site["primary"]
+                source = "official"
+                unverified = False
+
         out_colors.append(
             {
                 "key": c["key"],
@@ -252,7 +305,17 @@ def build_catalog():
                 "finishes": c["finishes"],
                 "notes": suffix_notes(c["suffix"]),
                 "color": consensus,
-                "swatch": rep["swatch"],
+                "swatch": swatch,
+                "swatchSource": source,
+                "official": {
+                    "printed": site["printed"],
+                    "colorWords": site["colorWords"],
+                    "finishes": site["finishes"],
+                    "shapes": [
+                        {"category": sh["category"], "size": sh["size"], "image": sh["local"]}
+                        for sh in site["shapes"]
+                    ],
+                } if site else None,
                 "lines": sorted({a["line"] for a in apps}),
                 "beadTypes": sorted({t for a in apps for t in a["beadTypes"]}),
                 "salesStyles": sorted({a["salesStyle"] for a in apps}),
@@ -369,8 +432,8 @@ def main():
     # Only the swatches the catalogue actually references are served: the crops
     # dropped as low-quality stay in build/ for inspection but never ship.
     # Replaced rather than merged, so a changed cell set leaves no orphans.
-    wanted = {c["swatch"] for c in catalog["colors"]}
-    wanted |= {a["swatch"] for c in catalog["colors"] for a in c["appearances"]}
+    wanted = {a["swatch"] for c in catalog["colors"] for a in c["appearances"]}
+    wanted |= {c["swatch"] for c in catalog["colors"] if c["swatchSource"] == "catalog"}
     shutil.rmtree(PUBLIC_SWATCHES, ignore_errors=True)
     os.makedirs(PUBLIC_SWATCHES, exist_ok=True)
     src = os.path.join(L.BUILD, "swatches")
@@ -379,7 +442,23 @@ def main():
         shutil.copy2(os.path.join(src, name), os.path.join(PUBLIC_SWATCHES, name))
         n += 1
 
+    # Official photographs are served alongside the catalogue crops.
+    shutil.rmtree(PUBLIC_OFFICIAL, ignore_errors=True)
+    n_official = 0
+    if os.path.isdir(OFFICIAL_IMG):
+        os.makedirs(PUBLIC_OFFICIAL, exist_ok=True)
+        used = {c["swatch"] for c in catalog["colors"] if c["swatchSource"] == "official"}
+        used |= {sh["image"] for c in catalog["colors"] if c["official"]
+                 for sh in c["official"]["shapes"]}
+        for name in sorted(used):
+            src_path = os.path.join(OFFICIAL_IMG, name)
+            if os.path.exists(src_path):
+                shutil.copy2(src_path, os.path.join(PUBLIC_OFFICIAL, name))
+                n_official += 1
+
     print("colours   : %d" % catalog["meta"]["colorCount"])
+    print("公式写真  : %d色 / %d枚" % (
+        sum(1 for c in catalog["colors"] if c["swatchSource"] == "official"), n_official))
     print("dropped   : %d low-quality appearances" % catalog["meta"]["droppedAppearances"])
     print("appearances: %d" % catalog["meta"]["appearanceCount"])
     print("swatches  : %d copied to public/swatches" % n)

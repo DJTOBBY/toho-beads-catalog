@@ -33,6 +33,14 @@ export type Appearance = {
 
 export type FinishRef = { finish: string; variation: string; methods: string[] };
 
+/** What toho-beads.co.jp publishes for this colour. */
+export type OfficialInfo = {
+  printed: string;
+  colorWords: string[];
+  finishes: string[];
+  shapes: { category: string; size: string; image: string }[];
+};
+
 export type BeadColor = {
   key: string;
   number: number;
@@ -44,6 +52,8 @@ export type BeadColor = {
   notes: string[];
   color: ColorMetrics;
   swatch: string;
+  swatchSource: "official" | "catalog";
+  official: OfficialInfo | null;
   lines: string[];
   beadTypes: string[];
   salesStyles: string[];
@@ -149,6 +159,8 @@ export type ColorIndexEntry = {
   /** sales styles */
   y: string[];
   sw: string;
+  /** "official" images live under /official, catalogue crops under /swatches */
+  src: "official" | "catalog";
   matte: boolean;
   /** no crop on any page was clean enough to show */
   unverified: boolean;
@@ -168,6 +180,7 @@ export function toIndex(colors: BeadColor[]): ColorIndexEntry[] {
     b: c.beadTypes,
     y: c.salesStyles,
     sw: c.swatch,
+    src: c.swatchSource,
     matte: c.matte,
     unverified: c.unverified,
   }));

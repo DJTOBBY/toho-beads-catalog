@@ -60,7 +60,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           style={{ color: "var(--fg-3)", borderTop: "1px solid var(--line)" }}
         >
           <p>
-            掲載データは「ビーズカタログ2021（第1部・第2部）」に基づきます。ガラス特有の光沢や質感、
+            掲載データは「ビーズカタログ2021（第1部・第2部）」に基づき、色見本の写真は
+            トーホー公式サイト（toho-beads.co.jp）の製品画像を使用しています。ガラス特有の光沢や質感、
             微妙な色合いは、写真・印刷・画面表示により実物とは異なる場合があります。
           </p>
           <p className="mt-2">

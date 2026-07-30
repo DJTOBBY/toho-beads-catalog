@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import type { ColorIndexEntry } from "@/lib/catalog";
-import { FAMILY_SWATCH, hexToOklab, oklabDistance } from "@/lib/color";
+import { FAMILY_SWATCH, hexToOklab, oklabDistance, swatchUrl } from "@/lib/color";
 
 type Props = {
   colors: ColorIndexEntry[];
@@ -346,7 +346,7 @@ export function CatalogBrowser({
                       </span>
                     ) : (
                       <img
-                        src={`/swatches/${c.sw}`}
+                        src={swatchUrl(c.sw, c.src)}
                         alt={`カラーNo.${c.k} のビーズ`}
                         loading="lazy"
                         decoding="async"
