@@ -24,6 +24,17 @@ export default async function HomePage() {
 
   const withPrice = new Set(Object.values(prices.prices).map((p) => p.colorKey));
 
+  // TOHO's own colour words, ordered by how many colours carry each.
+  const wordCounts = new Map<string, number>();
+  for (const c of catalog.colors) {
+    for (const w of c.official?.colorWords ?? []) {
+      wordCounts.set(w, (wordCounts.get(w) ?? 0) + 1);
+    }
+  }
+  const colorWords = [...wordCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([w]) => w);
+
   return (
     <>
       <section className="pt-10 sm:pt-14">
@@ -59,6 +70,7 @@ export default async function HomePage() {
         finishGroups={finishGroups}
         beadGroups={beadGroups}
         salesStyles={[...new Set(catalog.colors.flatMap((c) => c.salesStyles))].sort()}
+        colorWords={colorWords}
         codeIndex={codeIndex}
       />
     </>

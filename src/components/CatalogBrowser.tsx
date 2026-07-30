@@ -10,6 +10,8 @@ type Props = {
   finishGroups: { finish: string; variations: string[] }[];
   beadGroups: { group: string; types: { key: string; name: string }[] }[];
   salesStyles: string[];
+  /** TOHO's own colour words, most common first. */
+  colorWords: string[];
   /** colour number -> product codes, so the search box also matches 品番. */
   codeIndex: Record<string, string>;
 };
@@ -27,6 +29,7 @@ export function CatalogBrowser({
   finishGroups,
   beadGroups,
   salesStyles,
+  colorWords,
   codeIndex,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -34,6 +37,7 @@ export function CatalogBrowser({
   const [finishes, setFinishes] = useState<Set<string>>(new Set());
   const [beadTypes, setBeadTypes] = useState<Set<string>>(new Set());
   const [styles, setStyles] = useState<Set<string>>(new Set());
+  const [words, setWords] = useState<Set<string>>(new Set());
   const [matteOnly, setMatteOnly] = useState(false);
   const [pickedColor, setPickedColor] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("number");
@@ -61,12 +65,14 @@ export function CatalogBrowser({
       if (finishes.size && !c.f.some((f) => finishes.has(f))) return false;
       if (beadTypes.size && !c.b.some((b) => beadTypes.has(b))) return false;
       if (styles.size && !c.y.some((y) => styles.has(y))) return false;
+      if (words.size && !c.w.some((w) => words.has(w))) return false;
       if (matteOnly && !c.matte) return false;
       if (q) {
         const inKey = c.k.includes(q);
         const inCode = (codeIndex[c.k] ?? "").includes(q);
         const inFinish = c.f.some((f) => f.toUpperCase().includes(q));
-        if (!inKey && !inCode && !inFinish) return false;
+        const inWord = c.w.some((w) => w.toUpperCase().includes(q));
+        if (!inKey && !inCode && !inFinish && !inWord) return false;
       }
       return true;
     });
@@ -92,6 +98,7 @@ export function CatalogBrowser({
     finishes,
     beadTypes,
     styles,
+    words,
     matteOnly,
     pickedColor,
     sort,
@@ -101,7 +108,7 @@ export function CatalogBrowser({
 
   const visible = results.slice(0, limit);
   const activeFilters =
-    families.size + finishes.size + beadTypes.size + styles.size + (matteOnly ? 1 : 0);
+    families.size + finishes.size + beadTypes.size + styles.size + words.size + (matteOnly ? 1 : 0);
 
   function toggle(set: Set<string>, apply: (s: Set<string>) => void, value: string) {
     const next = new Set(set);
@@ -117,6 +124,7 @@ export function CatalogBrowser({
     setFinishes(new Set());
     setBeadTypes(new Set());
     setStyles(new Set());
+    setWords(new Set());
     setMatteOnly(false);
     setPickedColor(null);
     setSort("number");
@@ -215,6 +223,19 @@ export function CatalogBrowser({
                 })}
             </div>
           </Field>
+
+          <Details label={`色の呼び名${words.size ? ` (${words.size})` : ""}`}>
+            <p className="mb-1.5 text-[11px] leading-snug" style={{ color: "var(--fg-3)" }}>
+              トーホーが各カラーに付けている呼び名です。
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {colorWords.map((w) => (
+                <Chip key={w} on={words.has(w)} onClick={() => toggle(words, setWords, w)}>
+                  {w}
+                </Chip>
+              ))}
+            </div>
+          </Details>
 
           <Details label={`仕上げ加工${finishes.size ? ` (${finishes.size})` : ""}`}>
             <div className="grid gap-3">

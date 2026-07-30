@@ -44,6 +44,13 @@ export default async function ColorPage({ params }: Params) {
   const typeInfo = new Map(catalog.beadTypes.map((t) => [t.key, t]));
   const ink = contrastInk(color.color.hex);
 
+  // Only worth showing when the site says something the catalogue does not:
+  // repeating an agreeing classification twice would just be noise.
+  const printed = color.finishes.flatMap((f) => [f.finish, f.variation]);
+  const officialOnly = (color.official?.finishes ?? []).filter(
+    (f) => f && !printed.some((p) => p.includes(f) || f.includes(p)),
+  );
+
   return (
     <article className="pt-6">
       <nav className="mb-5 text-[12px]" style={{ color: "var(--fg-3)" }}>
@@ -137,6 +144,34 @@ export default async function ColorPage({ params }: Params) {
             </ul>
           )}
 
+          {color.official && color.official.colorWords.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-1.5 text-[11px]" style={{ color: "var(--fg-3)" }}>
+                色の呼び名
+              </p>
+              <ul className="flex flex-wrap gap-1.5">
+                {color.official.colorWords.map((w) => (
+                  <li
+                    key={w}
+                    className="rounded-full px-2.5 py-1 text-[12px]"
+                    style={{ border: "1px solid var(--line)", color: "var(--fg-2)" }}
+                  >
+                    {w}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* The 2021 edition and the current site classify a few colours
+              differently; both are shown rather than one being picked. */}
+          {officialOnly.length > 0 && (
+            <p className="mt-4 text-[12px]" style={{ color: "var(--fg-2)" }}>
+              公式サイトの加工区分:{" "}
+              <span style={{ color: "var(--fg)" }}>{officialOnly.join("・")}</span>
+            </p>
+          )}
+
           <p className="mt-5 text-[12px]" style={{ color: "var(--fg-3)" }}>
             掲載ページ: カタログ{" "}
             <span className="tabnum">
@@ -152,6 +187,43 @@ export default async function ColorPage({ params }: Params) {
           note="カラーNo.のあとに付くL・A・B・C・D・Hは、淡い順から濃い順を表します。"
         >
           <SwatchRow colors={[color, ...siblings]} currentKey={color.key} />
+        </Section>
+      )}
+
+      {color.official && color.official.shapes.length > 0 && (
+        <Section
+          title="形状ごとの実物写真"
+          note="トーホー公式サイトの製品写真です。同じカラーでも形状によって見え方が変わります。"
+        >
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {color.official.shapes.map((sh, i) => (
+              <li
+                key={`${sh.category}-${sh.image}-${i}`}
+                className="overflow-hidden rounded-[var(--radius-tile)]"
+                style={{ border: "1px solid var(--line)", background: "var(--bg-2)" }}
+              >
+                <div
+                  className="flex aspect-[5/3] items-center justify-center p-2"
+                  style={{ background: "var(--swatch-bg)" }}
+                >
+                  <img
+                    src={`/official/${sh.image}`}
+                    alt={`${sh.category} No.${color.key}`}
+                    loading="lazy"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+                <p className="px-2.5 py-2 text-[12px] font-medium">
+                  {sh.category}
+                  {sh.size && (
+                    <span className="ml-1 tabnum text-[10.5px]" style={{ color: "var(--fg-3)" }}>
+                      {sh.size}mm
+                    </span>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
         </Section>
       )}
 

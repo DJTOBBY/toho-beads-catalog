@@ -161,6 +161,8 @@ export type ColorIndexEntry = {
   sw: string;
   /** "official" images live under /official, catalogue crops under /swatches */
   src: "official" | "catalog";
+  /** TOHO's own colour words (青 / メタリック / パステル …) */
+  w: string[];
   matte: boolean;
   /** no crop on any page was clean enough to show */
   unverified: boolean;
@@ -181,6 +183,7 @@ export function toIndex(colors: BeadColor[]): ColorIndexEntry[] {
     y: c.salesStyles,
     sw: c.swatch,
     src: c.swatchSource,
+    w: c.official?.colorWords ?? [],
     matte: c.matte,
     unverified: c.unverified,
   }));
