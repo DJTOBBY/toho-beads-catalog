@@ -13,6 +13,22 @@ import { contrastInk, hexToOklab, oklabDistance, swatchUrl } from "@/lib/color";
 
 type Params = { params: Promise<{ key: string }> };
 
+// Pixels per millimetre of bead. The photos are not all shot at one
+// magnification — a スリーカット特小 at 1.6 mm comes back taller than a 丸小 at
+// 2.1 mm — so the drawn height is computed from the real size rather than taken
+// from the file, which is what makes 丸小 and 丸大 differ by their true ratio.
+const PX_PER_MM = 32;
+
+// Beads sized by length rather than diameter: their photo shows the tube lying
+// down, so its height is the tube's width and the size label says nothing about
+// it. These keep the photo's own proportions.
+const LENGTHWISE = ["竹ビーズ", "ツイスト", "スパイラル"];
+const LENGTHWISE_SCALE = 0.75;
+
+// How much of each strip is shown. Every window is the same width so the eye
+// compares bead size, not strip length.
+const SHAPE_WINDOW = 230;
+
 export async function generateStaticParams() {
   const catalog = await getCatalog();
   return catalog.colors.map((c) => ({ key: c.key }));
@@ -192,28 +208,42 @@ export default async function ColorPage({ params }: Params) {
 
       {color.official && color.official.shapes.length > 0 && (
         <Section
-          title="形状ごとの実物写真"
-          note="トーホー公式サイトの製品写真です。同じカラーでも形状によって見え方が変わります。"
+          title="形状とサイズの比べ方"
+          note="トーホー公式サイトの製品写真を、実物の大きさの比率どおりに並べています。丸小と丸大の差がそのまま見た目の差です。"
         >
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {/* Each photo is drawn at its own pixel height times one shared factor.
+              TOHO shoots every size at the same magnification, so that keeps 丸小
+              smaller than 丸大 on screen — fitting each to a common box, which is
+              what a grid of tiles does, would make them look identical. */}
+          <ul className="flex flex-wrap items-end gap-x-5 gap-y-6">
             {color.official.shapes.map((sh, i) => (
-              <li
-                key={`${sh.category}-${sh.image}-${i}`}
-                className="overflow-hidden rounded-[var(--radius-tile)]"
-                style={{ border: "1px solid var(--line)", background: "var(--bg-2)" }}
-              >
+              <li key={`${sh.category}-${sh.image}-${i}`} className="shrink-0">
+                {/* The window is a fixed width and the strip is cropped to it,
+                    rather than scaled to fit: scaling would undo the very size
+                    difference this section exists to show. */}
                 <div
-                  className="flex aspect-[5/3] items-center justify-center p-2"
-                  style={{ background: "var(--swatch-bg)" }}
+                  className="overflow-hidden rounded-[var(--radius-tile)]"
+                  style={{
+                    background: "var(--swatch-bg)",
+                    border: "1px solid var(--line)",
+                    width: SHAPE_WINDOW,
+                    height: shapeHeight(sh),
+                  }}
                 >
                   <img
                     src={`/official/${sh.image}`}
                     alt={`${sh.category} No.${color.key}`}
                     loading="lazy"
-                    className="max-h-full max-w-full object-contain"
+                    style={{
+                      height: shapeHeight(sh),
+                      width: sh.height
+                        ? (shapeHeight(sh) * sh.width) / sh.height
+                        : SHAPE_WINDOW,
+                      maxWidth: "none",
+                    }}
                   />
                 </div>
-                <p className="px-2.5 py-2 text-[12px] font-medium">
+                <p className="mt-1.5 text-[12px] font-medium">
                   {sh.category}
                   {sh.size && (
                     <span className="ml-1 tabnum text-[10.5px]" style={{ color: "var(--fg-3)" }}>
@@ -305,6 +335,15 @@ export default async function ColorPage({ params }: Params) {
     </article>
   );
 }
+
+/** How tall to draw a shape's photo so the beads compare at true size. */
+function shapeHeight(sh: { category: string; mm: number; height: number }): number {
+  if (LENGTHWISE.some((w) => sh.category.includes(w)) || !sh.mm) {
+    return (sh.height || 60) * LENGTHWISE_SCALE;
+  }
+  return Math.round(sh.mm * PX_PER_MM);
+}
+
 
 function nearestColors(catalog: Catalog, color: BeadColor, n: number): BeadColor[] {
   const target = hexToOklab(color.color.hex);

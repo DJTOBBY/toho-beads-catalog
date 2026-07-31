@@ -201,6 +201,32 @@ def aspect_outliers(colors) -> set[str]:
     return odd
 
 
+def shape_metrics(name: str) -> tuple[int, int] | None:
+    """Pixel size of an official photo.
+
+    TOHO shoots every size at the same magnification — roughly 40 px per mm — so
+    the pixel height of a photo is proportional to the bead's diameter. Keeping
+    the dimensions lets the app draw 丸小 and 丸大 at their true relative size
+    instead of scaling both to fill the same box.
+    """
+    path = os.path.join(OFFICIAL_IMG, name)
+    if not os.path.exists(path):
+        return None
+    with Image.open(path) as im:
+        return im.size
+
+
+def size_mm(size: str) -> float:
+    """The numeric millimetre value behind a size label like "2.0〜2.2"."""
+    cleaned = size.replace("〜", "~").replace("～", "~")
+    parts = [p for p in cleaned.split("~") if p.strip()]
+    try:
+        values = [float(p) for p in parts]
+    except ValueError:
+        return 0.0
+    return sum(values) / len(values) if values else 0.0
+
+
 def load_official() -> dict:
     """TOHO's own product index, keyed by catalogue colour number.
 
@@ -311,10 +337,20 @@ def build_catalog():
                     "printed": site["printed"],
                     "colorWords": site["colorWords"],
                     "finishes": site["finishes"],
-                    "shapes": [
-                        {"category": sh["category"], "size": sh["size"], "image": sh["local"]}
-                        for sh in site["shapes"]
-                    ],
+                    "shapes": sorted(
+                        (
+                            {
+                                "category": sh["category"],
+                                "size": sh["size"],
+                                "mm": size_mm(sh["size"]),
+                                "image": sh["local"],
+                                "width": (shape_metrics(sh["local"]) or (0, 0))[0],
+                                "height": (shape_metrics(sh["local"]) or (0, 0))[1],
+                            }
+                            for sh in site["shapes"]
+                        ),
+                        key=lambda sh: (sh["mm"], sh["category"]),
+                    ),
                 } if site else None,
                 "lines": sorted({a["line"] for a in apps}),
                 "beadTypes": sorted({t for a in apps for t in a["beadTypes"]}),

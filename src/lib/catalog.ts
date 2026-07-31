@@ -38,7 +38,15 @@ export type OfficialInfo = {
   printed: string;
   colorWords: string[];
   finishes: string[];
-  shapes: { category: string; size: string; image: string }[];
+  shapes: {
+    category: string;
+    size: string;
+    /** the size label as a number, for ordering and scaling */
+    mm: number;
+    image: string;
+    width: number;
+    height: number;
+  }[];
 };
 
 export type BeadColor = {
