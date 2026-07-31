@@ -63,6 +63,13 @@ python3 pipeline/fetch_official.py
 公式データからは写真のほかに、色の呼び名（青・パステル・メタリック等31種）と
 加工区分も取り込んでいます。色の呼び名は絞り込み条件として使えます。
 
+取得後は次のコマンドでWebPに変換します。JPEGのままだと3282枚で約100MBに
+なるため、公開時は必ず実行してください（101MB → 14MB）。
+
+```bash
+python3 pipeline/optimise_images.py
+```
+
 ### 誌面と公式データの照合
 
 ```bash
@@ -113,6 +120,9 @@ PDF の場所は `TOHO_CATALOG_PDF` 環境変数で指定できます（既定�
 | `pipeline/extract_colors.py` | カラー本体の抽出。`build/colors_report.json` に検証レポート |
 | `pipeline/build_data.py` | `data/catalog.json` と価格レイヤーの生成 |
 | `pipeline/verify_page.py` | 誌面と抽出結果を並べた検証シート（`build/verify/pNN.png`） |
+| `pipeline/fetch_official.py` | 公式サイトの製品データと写真の取得 |
+| `pipeline/optimise_images.py` | 公開画像のWebP変換と未参照ファイルの削除 |
+| `pipeline/cross_check.py` | 誌面と公式サイトの加工区分の照合 |
 
 ### 抽出の設計上のポイント
 
