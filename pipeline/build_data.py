@@ -25,6 +25,7 @@ from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib_pdf as L
+import lib_swatch as S
 from bead_types import BEAD_TYPES, SALES_STYLES
 from page_map import CHART_PAGES, NON_CHART_PAGES
 
@@ -268,6 +269,65 @@ def official_color(name: str) -> tuple[int, int, int] | None:
     return tuple(sum(c[i] for c in core) // n for i in range(3))
 
 
+# The site's product categories, mapped onto the bead-type keys the app filters
+# by. Only the round sizes matter for colours the catalogue never listed.
+SHAPE_TO_TYPE = {
+    "特小ビーズ": "特小",
+    "丸小ビーズ": "丸小",
+    "丸中ビーズ": "丸中",
+    "丸大ビーズ": "丸大",
+    "特大ビーズ（4mm）": "特大4mm",
+    "特大ビーズ（5.5mm）": "特大5.5mm",
+    "六角ビーズ（六角特小）": "六角特小",
+    "六角ビーズ（六角小）": "六角小",
+    "六角ビーズ（六角大）": "六角大",
+    "四角ビーズ（3mm）": "四角3mm",
+    "四角ビーズ（4mm）": "四角4mm",
+    "マガ玉ビーズ（3mm）": "マガ玉3mm",
+    "マガ玉ビーズ（4mm）": "マガ玉4mm",
+    "マガ玉ビーズ（5mm）": "マガ玉5mm",
+    "マガ玉ビーズ（7mm）": "マガ玉7mm",
+    "三角ビーズ（三角小）": "三角小",
+    "三角ビーズ（三角中）": "三角中",
+    "三角ビーズ（三角大）": "三角大",
+    "スリーカットビーズ（特小）": "スリーカット特小",
+    "スリーカットビーズ（丸小）": "スリーカット丸小",
+    "シャーロットビーズ（特小）": "シャーロット特小",
+    "シャーロットビーズ（丸小）": "シャーロット丸小",
+    "アンティークビーズ（丸小）": "アンティーク丸小",
+    "アンティークビーズ（角小）": "アンティーク角小",
+    "竹ビーズ（五厘竹）": "五厘竹",
+    "竹ビーズ（一分竹）": "一分竹",
+    "竹ビーズ（二分竹）": "二分竹",
+    "竹ビーズ（三分竹）": "三分竹",
+    "竹ビーズ（四分竹）": "四分竹",
+    "竹ビーズ（五分竹）": "五分竹",
+}
+
+
+def official_entry(site: dict) -> dict:
+    """The site's record for a colour, shaped for the app."""
+    return {
+        "printed": site["printed"],
+        "colorWords": site["colorWords"],
+        "finishes": site["finishes"],
+        "shapes": sorted(
+            (
+                {
+                    "category": sh["category"],
+                    "size": sh["size"],
+                    "mm": size_mm(sh["size"]),
+                    "image": served_name(sh["local"]),
+                    "width": (shape_metrics(sh["local"]) or (0, 0))[0],
+                    "height": (shape_metrics(sh["local"]) or (0, 0))[1],
+                }
+                for sh in site["shapes"]
+            ),
+            key=lambda sh: (sh["mm"], sh["category"]),
+        ),
+    }
+
+
 def load(name: str):
     with open(os.path.join(L.BUILD, name), encoding="utf-8") as fh:
         return json.load(fh)
@@ -342,25 +402,7 @@ def build_catalog():
                 "color": consensus,
                 "swatch": swatch,
                 "swatchSource": source,
-                "official": {
-                    "printed": site["printed"],
-                    "colorWords": site["colorWords"],
-                    "finishes": site["finishes"],
-                    "shapes": sorted(
-                        (
-                            {
-                                "category": sh["category"],
-                                "size": sh["size"],
-                                "mm": size_mm(sh["size"]),
-                                                "image": served_name(sh["local"]),
-                                "width": (shape_metrics(sh["local"]) or (0, 0))[0],
-                                "height": (shape_metrics(sh["local"]) or (0, 0))[1],
-                            }
-                            for sh in site["shapes"]
-                        ),
-                        key=lambda sh: (sh["mm"], sh["category"]),
-                    ),
-                } if site else None,
+                "official": official_entry(site) if site else None,
                 "lines": sorted({a["line"] for a in apps}),
                 "beadTypes": sorted({t for a in apps for t in a["beadTypes"]}),
                 "salesStyles": sorted({a["salesStyle"] for a in apps}),
@@ -379,6 +421,43 @@ def build_catalog():
                     }
                     for a in apps
                 ],
+            }
+        )
+
+    # Colours TOHO still sells that the 2021 catalogue pages never yielded — the
+    # printed 丸小・丸大 sample card lists 32 of them. The site has a photograph
+    # and a classification for each, which is everything the app needs to show
+    # one; what it cannot supply is a catalogue page or a printed price.
+    known = {c["key"] for c in out_colors}
+    for key, site in sorted(official.items(), key=lambda kv: kv[0]):
+        if key in known:
+            continue
+        rgb = official_color(site["primary"])
+        if not rgb:
+            continue
+        label = S.parse_color_label(site["printed"])
+        if not label:
+            continue
+        out_colors.append(
+            {
+                "key": key,
+                "number": label["number"],
+                "suffix": label["suffix"],
+                "matte": label["suffix"].endswith("F"),
+                "unverified": False,
+                "finishBase": None,
+                "finishes": [],
+                "notes": suffix_notes(label["suffix"]),
+                "color": {**color_metrics(rgb), "appearanceCount": 0, "spread": 0},
+                "swatch": served_name(site["primary"]),
+                "swatchSource": "official",
+                "official": official_entry(site),
+                "lines": [],
+                "beadTypes": sorted({SHAPE_TO_TYPE[sh["category"]]
+                                     for sh in site["shapes"]
+                                     if sh["category"] in SHAPE_TO_TYPE}),
+                "salesStyles": [],
+                "appearances": [],
             }
         )
 

@@ -84,6 +84,20 @@ python3 pipeline/fetch_official.py
 写真は `build_data.py` が `public/` に書き出す際にWebPへ変換します
 （JPEGのままだと約100MB、WebPで19MB）。
 
+### 見本帳との突き合わせ
+
+```bash
+python3 pipeline/check_sample_card.py
+```
+
+丸小・丸大の SAMPLE CARD（Ver.2010.12）に印刷された559色を
+`pipeline/sample_card.py` に転記してあり、収録漏れを検出します。現在は
+**559色すべて収録済み**です。
+
+丸小672色に対し丸大594色と差がありますが、これはデータの欠落ではなく実際の
+商品構成です（見本帳もグレー表示で「丸小サイズのみ常備品」を示しています）。
+丸小のみ・丸大のみの色は、詳細ページにその旨を表示します。
+
 ### 誌面と公式データの照合
 
 ```bash

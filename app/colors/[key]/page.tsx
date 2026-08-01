@@ -38,6 +38,8 @@ const SHAPE_WINDOW = 190;
 // Softens the cut edge so a cropped strip reads as continuing past the frame.
 const SHAPE_FADE = "linear-gradient(to right, #000 0 74%, transparent 100%)";
 
+const ROUND_SIZES = ["丸小ビーズ", "丸中ビーズ", "丸大ビーズ"];
+
 export async function generateStaticParams() {
   const catalog = await getCatalog();
   return catalog.colors.map((c) => ({ key: c.key }));
@@ -75,6 +77,18 @@ export default async function ColorPage({ params }: Params) {
   const officialOnly = (color.official?.finishes ?? []).filter(
     (f) => f && !printed.some((p) => p.includes(f) || f.includes(p)),
   );
+
+  // Not every colour is made in every round size — the sample card greys out the
+  // ones stocked in 丸小 only — and that is the first thing a buyer needs to know.
+  const roundSizes = (color.official?.shapes ?? [])
+    .map((sh) => sh.category)
+    .filter((c) => ROUND_SIZES.includes(c));
+  const roundNote =
+    roundSizes.length === 1 && roundSizes[0] === "丸小ビーズ"
+      ? "丸小サイズのみの常備品です。"
+      : roundSizes.length === 1 && roundSizes[0] === "丸大ビーズ"
+        ? "丸大サイズのみの常備品です。"
+        : null;
 
   return (
     <article className="pt-6">
@@ -188,6 +202,15 @@ export default async function ColorPage({ params }: Params) {
             </div>
           )}
 
+          {roundNote && (
+            <p
+              className="mt-4 rounded-lg px-3 py-2 text-[12px]"
+              style={{ background: "var(--accent-soft)", color: "var(--fg-2)" }}
+            >
+              {roundNote}
+            </p>
+          )}
+
           {/* The 2021 edition and the current site classify a few colours
               differently; both are shown rather than one being picked. */}
           {officialOnly.length > 0 && (
@@ -197,11 +220,18 @@ export default async function ColorPage({ params }: Params) {
             </p>
           )}
 
+          {/* Colours added from the site alone have no catalogue page to cite. */}
           <p className="mt-5 text-[12px]" style={{ color: "var(--fg-3)" }}>
-            掲載ページ: カタログ{" "}
-            <span className="tabnum">
-              P.{[...new Set(color.appearances.map((a) => a.catalogPage))].join(" / P.")}
-            </span>
+            {color.appearances.length > 0 ? (
+              <>
+                掲載ページ: カタログ{" "}
+                <span className="tabnum">
+                  P.{[...new Set(color.appearances.map((a) => a.catalogPage))].join(" / P.")}
+                </span>
+              </>
+            ) : (
+              "2021年カタログには掲載されていません。トーホー公式サイトの情報です。"
+            )}
           </p>
         </div>
       </header>
