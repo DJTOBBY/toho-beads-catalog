@@ -43,6 +43,15 @@ PUBLIC_OFFICIAL = os.path.join(L.REPO, "public", "official")
 OFFICIAL_JSON = os.path.join(L.BUILD, "web", "official.json")
 OFFICIAL_IMG = os.path.join(L.BUILD, "web", "img")
 
+# The site's JPEGs are re-encoded on the way into public/.
+OFFICIAL_QUALITY = 86
+OFFICIAL_MAX_WIDTH = 560
+
+
+def served_name(name: str) -> str:
+    """The filename the app requests, once the photo has been re-encoded."""
+    return os.path.splitext(name)[0] + ".webp"
+
 EDITION = "2021年10月時点（第1部・第2部）"
 PRICE_NOTE = (
     "掲載価格は2021年カタログ時点の本体価格（定価・税抜）です。"
@@ -316,7 +325,7 @@ def build_catalog():
                 consensus = {**color_metrics(rgb),
                              "appearanceCount": consensus["appearanceCount"],
                              "spread": consensus["spread"]}
-                swatch = site["primary"]
+                swatch = served_name(site["primary"])
                 source = "official"
                 unverified = False
 
@@ -343,7 +352,7 @@ def build_catalog():
                                 "category": sh["category"],
                                 "size": sh["size"],
                                 "mm": size_mm(sh["size"]),
-                                "image": sh["local"],
+                                                "image": served_name(sh["local"]),
                                 "width": (shape_metrics(sh["local"]) or (0, 0))[0],
                                 "height": (shape_metrics(sh["local"]) or (0, 0))[1],
                             }
@@ -468,8 +477,11 @@ def main():
     # Only the swatches the catalogue actually references are served: the crops
     # dropped as low-quality stay in build/ for inspection but never ship.
     # Replaced rather than merged, so a changed cell set leaves no orphans.
-    wanted = {a["swatch"] for c in catalog["colors"] for a in c["appearances"]}
-    wanted |= {c["swatch"] for c in catalog["colors"] if c["swatchSource"] == "catalog"}
+    # Only the crops the app actually draws. The per-appearance crops are kept in
+    # build/ for inspection but never rendered — the detail table lists pages and
+    # prices, not pictures — so shipping all 2,648 of them was 25 MB of dead
+    # weight in the export.
+    wanted = {c["swatch"] for c in catalog["colors"] if c["swatchSource"] == "catalog"}
     shutil.rmtree(PUBLIC_SWATCHES, ignore_errors=True)
     os.makedirs(PUBLIC_SWATCHES, exist_ok=True)
     src = os.path.join(L.BUILD, "swatches")
@@ -478,19 +490,34 @@ def main():
         shutil.copy2(os.path.join(src, name), os.path.join(PUBLIC_SWATCHES, name))
         n += 1
 
-    # Official photographs are served alongside the catalogue crops.
+    # Official photographs are served alongside the catalogue crops, re-encoded
+    # on the way out. They arrive from the site as JPEG and total about 100 MB;
+    # as WebP that is under 20 MB with no visible difference at these sizes.
+    # Doing it here rather than in a separate pass means a later rebuild cannot
+    # quietly put the JPEGs back.
     shutil.rmtree(PUBLIC_OFFICIAL, ignore_errors=True)
     n_official = 0
     if os.path.isdir(OFFICIAL_IMG):
         os.makedirs(PUBLIC_OFFICIAL, exist_ok=True)
-        used = {c["swatch"] for c in catalog["colors"] if c["swatchSource"] == "official"}
-        used |= {sh["image"] for c in catalog["colors"] if c["official"]
-                 for sh in c["official"]["shapes"]}
-        for name in sorted(used):
-            src_path = os.path.join(OFFICIAL_IMG, name)
-            if os.path.exists(src_path):
-                shutil.copy2(src_path, os.path.join(PUBLIC_OFFICIAL, name))
-                n_official += 1
+        # The catalogue names photos by what the app requests (.webp); the source
+        # files still carry the site's original extension, so map back.
+        wanted = {c["swatch"] for c in catalog["colors"] if c["swatchSource"] == "official"}
+        wanted |= {sh["image"] for c in catalog["colors"] if c["official"]
+                   for sh in c["official"]["shapes"]}
+        sources = {served_name(f): f for f in os.listdir(OFFICIAL_IMG)}
+        for served in sorted(wanted):
+            origin = sources.get(served)
+            if not origin:
+                continue
+            src_path = os.path.join(OFFICIAL_IMG, origin)
+            name = origin
+            with Image.open(src_path) as im:
+                im = im.convert("RGB")
+                if im.width > OFFICIAL_MAX_WIDTH:
+                    im.thumbnail((OFFICIAL_MAX_WIDTH, OFFICIAL_MAX_WIDTH * 4))
+                im.save(os.path.join(PUBLIC_OFFICIAL, served_name(name)), "WEBP",
+                        quality=OFFICIAL_QUALITY, method=5)
+            n_official += 1
 
     print("colours   : %d" % catalog["meta"]["colorCount"])
     print("公式写真  : %d色 / %d枚" % (

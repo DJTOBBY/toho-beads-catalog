@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "3111"],
       "port": 3111
+    },
+    {
+      "name": "tohobeadsbook-static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "out", "-l", "3112"],
+      "port": 3112
     }
   ]
 }

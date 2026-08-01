@@ -211,7 +211,7 @@ export default async function ColorPage({ params }: Params) {
           title="同じ基本カラーNo.の濃淡"
           note="カラーNo.のあとに付くL・A・B・C・D・Hは、淡い順から濃い順を表します。"
         >
-          <SwatchRow colors={[color, ...siblings]} currentKey={color.key} />
+          <SwatchRow colors={[color, ...siblings].map(toChip)} currentKey={color.key} />
         </Section>
       )}
 
@@ -340,7 +340,7 @@ export default async function ColorPage({ params }: Params) {
       </Section>
 
       <Section title="色の近いカラー" note="OKLab色空間での距離が近い順に表示しています。">
-        <SwatchRow colors={similar} currentKey={color.key} />
+        <SwatchRow colors={similar.map(toChip)} currentKey={color.key} />
       </Section>
     </article>
   );
@@ -388,7 +388,20 @@ function Section({
   );
 }
 
-function SwatchRow({ colors, currentKey }: { colors: BeadColor[]; currentKey: string }) {
+/** Just enough of a colour to draw a chip. Passing whole BeadColor records here
+    put every neighbour's appearances and prices into each page's payload. */
+type Chip = Pick<BeadColor, "key" | "swatch" | "swatchSource" | "unverified">;
+
+function toChip(c: BeadColor): Chip {
+  return {
+    key: c.key,
+    swatch: c.swatch,
+    swatchSource: c.swatchSource,
+    unverified: c.unverified,
+  };
+}
+
+function SwatchRow({ colors, currentKey }: { colors: Chip[]; currentKey: string }) {
   return (
     <ul className="scroll-x flex gap-3 pb-2">
       {colors.map((c) => {

@@ -10,8 +10,26 @@
   同じ基本カラーNo.の濃淡（`5L → 5 → 5D`）、色の近いカラー
 
 ```bash
-npm run dev
+npm run dev      # 開発サーバー
+npm run build    # out/ に静的サイトを書き出す
 ```
+
+## 公開する
+
+`npm run build` で `out/` に**サーバー不要の静的サイト**が書き出されます
+（163MB / 約12,000ファイル）。API もサーバー処理も無いので、静的ホスティング
+であればどこでも動きます。
+
+```bash
+npx serve out    # 手元で確認する
+```
+
+- Vercel / Netlify / Cloudflare Pages: `out` を公開ディレクトリに指定
+- GitHub Pages: `out` の中身をそのまま配置
+- 社内サーバー: ファイルを置くだけ
+
+価格を更新したら `npm run build` を再実行して配置し直してください。静的サイト
+なのでビルド時点の価格が焼き込まれます。
 
 ## 価格の更新
 
@@ -63,12 +81,8 @@ python3 pipeline/fetch_official.py
 公式データからは写真のほかに、色の呼び名（青・パステル・メタリック等31種）と
 加工区分も取り込んでいます。色の呼び名は絞り込み条件として使えます。
 
-取得後は次のコマンドでWebPに変換します。JPEGのままだと3282枚で約100MBに
-なるため、公開時は必ず実行してください（101MB → 14MB）。
-
-```bash
-python3 pipeline/optimise_images.py
-```
+写真は `build_data.py` が `public/` に書き出す際にWebPへ変換します
+（JPEGのままだと約100MB、WebPで19MB）。
 
 ### 誌面と公式データの照合
 
@@ -121,7 +135,6 @@ PDF の場所は `TOHO_CATALOG_PDF` 環境変数で指定できます（既定�
 | `pipeline/build_data.py` | `data/catalog.json` と価格レイヤーの生成 |
 | `pipeline/verify_page.py` | 誌面と抽出結果を並べた検証シート（`build/verify/pNN.png`） |
 | `pipeline/fetch_official.py` | 公式サイトの製品データと写真の取得 |
-| `pipeline/optimise_images.py` | 公開画像のWebP変換と未参照ファイルの削除 |
 | `pipeline/cross_check.py` | 誌面と公式サイトの加工区分の照合 |
 
 ### 抽出の設計上のポイント
