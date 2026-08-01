@@ -17,7 +17,7 @@ type Params = { params: Promise<{ key: string }> };
 // magnification — a スリーカット特小 at 1.6 mm comes back taller than a 丸小 at
 // 2.1 mm — so the drawn height is computed from the real size rather than taken
 // from the file, which is what makes 丸小 and 丸大 differ by their true ratio.
-const PX_PER_MM = 32;
+const PX_PER_MM = 28;
 
 // Beads sized by length rather than diameter: their photo shows the tube lying
 // down, so its height is the tube's width and the size label says nothing about
@@ -25,9 +25,18 @@ const PX_PER_MM = 32;
 const LENGTHWISE = ["竹ビーズ", "ツイスト", "スパイラル"];
 const LENGTHWISE_SCALE = 0.75;
 
+// Some photos are framed wider than others, so drawing them at true scale would
+// mean enlarging a small file — 特大 4mm arrives only 64 px tall — and a blurred
+// bead reads worse than one drawn a little under size. Past this the photo keeps
+// its own resolution; the order of sizes still holds.
+const MAX_UPSCALE = 1.25;
+
 // How much of each strip is shown. Every window is the same width so the eye
 // compares bead size, not strip length.
-const SHAPE_WINDOW = 230;
+const SHAPE_WINDOW = 190;
+
+// Softens the cut edge so a cropped strip reads as continuing past the frame.
+const SHAPE_FADE = "linear-gradient(to right, #000 0 74%, transparent 100%)";
 
 export async function generateStaticParams() {
   const catalog = await getCatalog();
@@ -211,48 +220,49 @@ export default async function ColorPage({ params }: Params) {
           title="形状とサイズの比べ方"
           note="トーホー公式サイトの製品写真を、実物の大きさの比率どおりに並べています。丸小と丸大の差がそのまま見た目の差です。"
         >
-          {/* Each photo is drawn at its own pixel height times one shared factor.
-              TOHO shoots every size at the same magnification, so that keeps 丸小
-              smaller than 丸大 on screen — fitting each to a common box, which is
-              what a grid of tiles does, would make them look identical. */}
-          <ul className="flex flex-wrap items-end gap-x-5 gap-y-6">
-            {color.official.shapes.map((sh, i) => (
-              <li key={`${sh.category}-${sh.image}-${i}`} className="shrink-0">
-                {/* The window is a fixed width and the strip is cropped to it,
-                    rather than scaled to fit: scaling would undo the very size
-                    difference this section exists to show. */}
-                <div
-                  className="overflow-hidden rounded-[var(--radius-tile)]"
-                  style={{
-                    background: "var(--swatch-bg)",
-                    border: "1px solid var(--line)",
-                    width: SHAPE_WINDOW,
-                    height: shapeHeight(sh),
-                  }}
-                >
-                  <img
-                    src={`/official/${sh.image}`}
-                    alt={`${sh.category} No.${color.key}`}
-                    loading="lazy"
+          {/* Every strip rests on one baseline, so the eye reads the row as a
+              size chart: the beads simply grow along it. Boxing each photo would
+              hide that, since a box normalises what it contains. */}
+          <ul className="flex flex-wrap items-end gap-x-6 gap-y-7">
+            {color.official.shapes.map((sh, i) => {
+              const h = shapeHeight(sh);
+              return (
+                <li key={`${sh.category}-${sh.image}-${i}`} className="shrink-0">
+                  {/* Cropped to a fixed width rather than scaled down to it —
+                      scaling would undo the size difference — and faded at the
+                      cut so the strip reads as continuing, not chopped. */}
+                  <div
+                    className="overflow-hidden rounded-md"
                     style={{
-                      height: shapeHeight(sh),
-                      width: sh.height
-                        ? (shapeHeight(sh) * sh.width) / sh.height
-                        : SHAPE_WINDOW,
-                      maxWidth: "none",
+                      background: "var(--swatch-bg)",
+                      width: SHAPE_WINDOW,
+                      height: h,
+                      WebkitMaskImage: SHAPE_FADE,
+                      maskImage: SHAPE_FADE,
                     }}
-                  />
-                </div>
-                <p className="mt-1.5 text-[12px] font-medium">
-                  {sh.category}
-                  {sh.size && (
-                    <span className="ml-1 tabnum text-[10.5px]" style={{ color: "var(--fg-3)" }}>
-                      {sh.size}mm
-                    </span>
-                  )}
-                </p>
-              </li>
-            ))}
+                  >
+                    <img
+                      src={`/official/${sh.image}`}
+                      alt={`${sh.category} No.${color.key}`}
+                      loading="lazy"
+                      style={{
+                        height: h,
+                        width: sh.height ? (h * sh.width) / sh.height : SHAPE_WINDOW,
+                        maxWidth: "none",
+                      }}
+                    />
+                  </div>
+                  <p className="mt-2 text-[12px] leading-tight">
+                    <span className="font-medium">{sh.category}</span>
+                    {sh.size && (
+                      <span className="ml-1.5 tabnum text-[11px]" style={{ color: "var(--fg-3)" }}>
+                        {sh.size}mm
+                      </span>
+                    )}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         </Section>
       )}
@@ -338,10 +348,11 @@ export default async function ColorPage({ params }: Params) {
 
 /** How tall to draw a shape's photo so the beads compare at true size. */
 function shapeHeight(sh: { category: string; mm: number; height: number }): number {
+  const native = sh.height || 60;
   if (LENGTHWISE.some((w) => sh.category.includes(w)) || !sh.mm) {
-    return (sh.height || 60) * LENGTHWISE_SCALE;
+    return Math.round(native * LENGTHWISE_SCALE);
   }
-  return Math.round(sh.mm * PX_PER_MM);
+  return Math.round(Math.min(sh.mm * PX_PER_MM, native * MAX_UPSCALE));
 }
 
 
