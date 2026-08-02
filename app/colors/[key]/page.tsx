@@ -9,7 +9,7 @@ import {
   getPrices,
   toneSiblings,
 } from "@/lib/catalog";
-import { contrastInk, hexToOklab, oklabDistance, swatchUrl } from "@/lib/color";
+import { contrastInk, hexToOklab, oklabDistance, officialUrl, swatchUrl } from "@/lib/color";
 
 type Params = { params: Promise<{ key: string }> };
 
@@ -272,7 +272,7 @@ export default async function ColorPage({ params }: Params) {
                     }}
                   >
                     <img
-                      src={`/official/${sh.image}`}
+                      src={officialUrl(sh.image)}
                       alt={`${sh.category} No.${color.key}`}
                       loading="lazy"
                       style={{

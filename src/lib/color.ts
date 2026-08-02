@@ -87,7 +87,18 @@ export const FAMILY_SWATCH: Record<string, string> = {
 };
 
 
+/** Prefix for files under public/.
+
+    next/link and the bundler pick up basePath on their own, but a plain <img
+    src="/…"> does not, and every swatch is one of those. */
+export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 /** Where a swatch image is served from, given its source. */
 export function swatchUrl(name: string, source: "official" | "catalog"): string {
-  return `${source === "official" ? "/official" : "/swatches"}/${name}`;
+  return `${BASE_PATH}${source === "official" ? "/official" : "/swatches"}/${name}`;
+}
+
+/** URL for one of the official shape photographs. */
+export function officialUrl(name: string): string {
+  return `${BASE_PATH}/official/${name}`;
 }
