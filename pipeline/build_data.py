@@ -30,6 +30,7 @@ from bead_types import BEAD_TYPES, SALES_STYLES
 from page_map import CHART_PAGES, NON_CHART_PAGES
 
 DATA = os.path.join(L.REPO, "data")
+REGLASS_JSON = os.path.join(L.BUILD, "reglass.json")
 
 # Above this fraction of a swatch region covered by type, the crop landed on the
 # neighbouring labels instead of the beads.
@@ -461,6 +462,8 @@ def build_catalog():
             }
         )
 
+    reglass = add_reglass(out_colors)
+
     out_colors.sort(key=lambda c: (c["number"], c["suffix"]))
     return {
         "meta": {
@@ -469,6 +472,7 @@ def build_catalog():
             "source": "ビーズカタログ2021 第1部・第2部",
             "priceNote": PRICE_NOTE,
             "colorCount": len(out_colors),
+            "reglass": reglass,
             "appearanceCount": sum(len(c["appearances"]) for c in out_colors),
             "pageCount": len(CHART_PAGES) + len(NON_CHART_PAGES),
             "droppedAppearances": dropped,
@@ -492,6 +496,67 @@ def build_catalog():
         ],
         "colors": out_colors,
     }
+
+
+def add_reglass(out_colors: list[dict]) -> dict | None:
+    """Append the RE:glass line, built by build_reglass.py.
+
+    These beads are made from recycled bottle glass rather than from a recipe,
+    so they are not in the 2021 catalogue and not in the company product index.
+    They do share the numbering, though: a RE:glass number is a catalogue number
+    plus 5000, and it is made by the same process. Carrying the base colour's
+    finish across is what puts them in the finish filter alongside everything
+    else.
+
+    Colour words are deliberately *not* carried across. The number says which
+    process was used, not what the result looks like — the black bottle's 5009
+    reads olive where the catalogue's 9 is grey — so the hue family is measured
+    from the photograph instead.
+    """
+    if not os.path.exists(REGLASS_JSON):
+        return None
+    with open(REGLASS_JSON, encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    by_key = {c["key"]: c for c in out_colors}
+    line, sizes = data["line"], data["sizes"]
+    bead_types = sorted({SHAPE_TO_TYPE[s["category"]] for s in sizes})
+
+    for item in data["colors"]:
+        base = by_key.get(item["base"])
+        label = S.parse_color_label(item["key"])
+        out_colors.append(
+            {
+                "key": item["key"],
+                "number": label["number"] if label else 0,
+                "suffix": label["suffix"] if label else "",
+                "matte": item["matte"],
+                "unverified": False,
+                "finishBase": None,
+                "finishes": base["finishes"] if base else [],
+                "notes": suffix_notes(item["key"][-1] if item["matte"] else ""),
+                "color": {
+                    **color_metrics(tuple(item["rgb"])),
+                    "appearanceCount": 0,
+                    "spread": 0,
+                },
+                "swatch": item["swatch"],
+                "swatchSource": "reglass",
+                "official": None,
+                "reglass": {
+                    "bottle": item["bottle"],
+                    "bottleEn": item["bottleEn"],
+                    "baseKey": item["base"],
+                    "sizes": sizes,
+                    **line,
+                },
+                "lines": [line["name"]],
+                "beadTypes": bead_types,
+                "salesStyles": [],
+                "appearances": [],
+            }
+        )
+    return {"count": len(data["colors"]), **line}
 
 
 def build_price_seed(raw_colors) -> dict:

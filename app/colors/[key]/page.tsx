@@ -9,7 +9,13 @@ import {
   getPrices,
   toneSiblings,
 } from "@/lib/catalog";
-import { contrastInk, hexToOklab, oklabDistance, officialUrl, swatchUrl } from "@/lib/color";
+import {
+  contrastInk,
+  hexToOklab,
+  oklabDistance,
+  officialUrl,
+  swatchUrl,
+} from "@/lib/color";
 
 type Params = { params: Promise<{ key: string }> };
 
@@ -105,13 +111,21 @@ export default async function ColorPage({ params }: Params) {
       <header className="grid gap-6 md:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
         <div
           className="flex items-center justify-center overflow-hidden rounded-xl p-6"
-          style={{ background: "var(--swatch-bg)", border: "1px solid var(--line)" }}
+          style={{
+            background: "var(--swatch-bg)",
+            border: "1px solid var(--line)",
+          }}
         >
           {color.unverified ? (
-            <p className="px-6 py-12 text-center text-[12px]" style={{ color: "#8b8379" }}>
+            <p
+              className="px-6 py-12 text-center text-[12px]"
+              style={{ color: "#8b8379" }}
+            >
               このカラーは誌面から確実な画像を切り出せませんでした。
               <br />
-              カタログ P.{color.appearances.map((a) => a.catalogPage).join(" / P.")} をご参照ください。
+              カタログ P.
+              {color.appearances.map((a) => a.catalogPage).join(" / P.")}{" "}
+              をご参照ください。
             </p>
           ) : (
             /* Never scaled past its own pixels: the crops are 480px on their
@@ -152,7 +166,10 @@ export default async function ColorPage({ params }: Params) {
                   <dd className="text-[15px] font-medium">
                     {f.finish}
                     {f.variation !== f.finish && (
-                      <span style={{ color: "var(--fg-2)" }}> — {f.variation}</span>
+                      <span style={{ color: "var(--fg-2)" }}>
+                        {" "}
+                        — {f.variation}
+                      </span>
                     )}
                   </dd>
                 </div>
@@ -170,8 +187,36 @@ export default async function ColorPage({ params }: Params) {
             </p>
           )}
 
+          {color.reglass && (
+            <div
+              className="mt-4 rounded-lg px-3 py-2.5 text-[12px]"
+              style={{ background: "var(--accent-soft)", color: "var(--fg-2)" }}
+            >
+              <p style={{ color: "var(--fg)" }} className="font-medium">
+                {color.reglass.name}（{color.reglass.nameJa}）
+              </p>
+              <p className="mt-1 leading-relaxed">{color.reglass.note}</p>
+              <p className="mt-1.5">
+                原料の瓶:{" "}
+                <span style={{ color: "var(--fg)" }}>
+                  {color.reglass.bottle}
+                </span>
+                <span style={{ color: "var(--fg-3)" }}>
+                  {" "}
+                  / {color.reglass.bottleEn}
+                </span>
+              </p>
+              <p className="mt-1" style={{ color: "var(--fg-3)" }}>
+                加工はカラーNo.{color.reglass.baseKey} と同じ区分です。
+              </p>
+            </div>
+          )}
+
           {color.notes.length > 0 && (
-            <ul className="mt-4 grid gap-1 text-[12px]" style={{ color: "var(--fg-2)" }}>
+            <ul
+              className="mt-4 grid gap-1 text-[12px]"
+              style={{ color: "var(--fg-2)" }}
+            >
               {color.notes.map((n) => (
                 <li key={n} className="flex gap-1.5">
                   <span aria-hidden style={{ color: "var(--fg-3)" }}>
@@ -185,7 +230,10 @@ export default async function ColorPage({ params }: Params) {
 
           {color.official && color.official.colorWords.length > 0 && (
             <div className="mt-4">
-              <p className="mb-1.5 text-[11px]" style={{ color: "var(--fg-3)" }}>
+              <p
+                className="mb-1.5 text-[11px]"
+                style={{ color: "var(--fg-3)" }}
+              >
                 色の呼び名
               </p>
               <ul className="flex flex-wrap gap-1.5">
@@ -193,7 +241,10 @@ export default async function ColorPage({ params }: Params) {
                   <li
                     key={w}
                     className="rounded-full px-2.5 py-1 text-[12px]"
-                    style={{ border: "1px solid var(--line)", color: "var(--fg-2)" }}
+                    style={{
+                      border: "1px solid var(--line)",
+                      color: "var(--fg-2)",
+                    }}
                   >
                     {w}
                   </li>
@@ -216,7 +267,9 @@ export default async function ColorPage({ params }: Params) {
           {officialOnly.length > 0 && (
             <p className="mt-4 text-[12px]" style={{ color: "var(--fg-2)" }}>
               公式サイトの加工区分:{" "}
-              <span style={{ color: "var(--fg)" }}>{officialOnly.join("・")}</span>
+              <span style={{ color: "var(--fg)" }}>
+                {officialOnly.join("・")}
+              </span>
             </p>
           )}
 
@@ -226,8 +279,25 @@ export default async function ColorPage({ params }: Params) {
               <>
                 掲載ページ: カタログ{" "}
                 <span className="tabnum">
-                  P.{[...new Set(color.appearances.map((a) => a.catalogPage))].join(" / P.")}
+                  P.
+                  {[
+                    ...new Set(color.appearances.map((a) => a.catalogPage)),
+                  ].join(" / P.")}
                 </span>
+              </>
+            ) : color.reglass ? (
+              <>
+                2021年カタログには掲載されていません。
+                <a
+                  href={color.reglass.site}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                  style={{ color: "var(--accent)" }}
+                >
+                  RE:glass beads 公式サイト
+                </a>
+                の情報です。
               </>
             ) : (
               "2021年カタログには掲載されていません。トーホー公式サイトの情報です。"
@@ -241,7 +311,45 @@ export default async function ColorPage({ params }: Params) {
           title="同じ基本カラーNo.の濃淡"
           note="カラーNo.のあとに付くL・A・B・C・D・Hは、淡い順から濃い順を表します。"
         >
-          <SwatchRow colors={[color, ...siblings].map(toChip)} currentKey={color.key} />
+          <SwatchRow
+            colors={[color, ...siblings].map(toChip)}
+            currentKey={color.key}
+          />
+        </Section>
+      )}
+
+      {color.reglass && (
+        <Section
+          title="つくられているサイズ"
+          note="RE:glass beads は丸小・丸大の2サイズです。着色をしないため、同じカラーNo.でもロットにより色味が変わります。"
+        >
+          <ul className="flex flex-wrap items-end gap-x-8 gap-y-6">
+            {color.reglass.sizes.map((s) => (
+              <li key={s.category} className="shrink-0 text-center">
+                {/* Sized from the real diameter, on the same mm-to-pixel scale
+                    the shape comparison uses, so 丸小 and 丸大 differ here by
+                    exactly as much as they do in the hand. */}
+                <span
+                  className="mx-auto block rounded-full"
+                  style={{
+                    width: s.mm * PX_PER_MM,
+                    height: s.mm * PX_PER_MM,
+                    background: color.color.hex,
+                    border: "1px solid var(--line)",
+                  }}
+                />
+                <span className="mt-2 block text-[12px] font-medium">
+                  {s.category}
+                </span>
+                <span
+                  className="block text-[11px] tabnum"
+                  style={{ color: "var(--fg-3)" }}
+                >
+                  外径約{s.size}mm
+                </span>
+              </li>
+            ))}
+          </ul>
         </Section>
       )}
 
@@ -257,7 +365,10 @@ export default async function ColorPage({ params }: Params) {
             {color.official.shapes.map((sh, i) => {
               const h = shapeHeight(sh);
               return (
-                <li key={`${sh.category}-${sh.image}-${i}`} className="shrink-0">
+                <li
+                  key={`${sh.category}-${sh.image}-${i}`}
+                  className="shrink-0"
+                >
                   {/* Cropped to a fixed width rather than scaled down to it —
                       scaling would undo the size difference — and faded at the
                       cut so the strip reads as continuing, not chopped. */}
@@ -277,7 +388,9 @@ export default async function ColorPage({ params }: Params) {
                       loading="lazy"
                       style={{
                         height: h,
-                        width: sh.height ? (h * sh.width) / sh.height : SHAPE_WINDOW,
+                        width: sh.height
+                          ? (h * sh.width) / sh.height
+                          : SHAPE_WINDOW,
                         maxWidth: "none",
                       }}
                     />
@@ -285,7 +398,10 @@ export default async function ColorPage({ params }: Params) {
                   <p className="mt-2 text-[12px] leading-tight">
                     <span className="font-medium">{sh.category}</span>
                     {sh.size && (
-                      <span className="ml-1.5 tabnum text-[11px]" style={{ color: "var(--fg-3)" }}>
+                      <span
+                        className="ml-1.5 tabnum text-[11px]"
+                        style={{ color: "var(--fg-3)" }}
+                      >
                         {sh.size}mm
                       </span>
                     )}
@@ -297,79 +413,114 @@ export default async function ColorPage({ params }: Params) {
         </Section>
       )}
 
-      <Section title="このカラーが使われているビーズ">
-        <div className="scroll-x">
-          <table className="w-full min-w-[640px] border-collapse text-[13px]">
-            <thead>
-              <tr style={{ color: "var(--fg-3)" }} className="text-left text-[11px]">
-                <th className="py-2 pr-4 font-medium">製品ライン</th>
-                <th className="py-2 pr-4 font-medium">ビーズ種別・サイズ</th>
-                <th className="py-2 pr-4 font-medium">販売スタイル</th>
-                <th className="py-2 pr-4 font-medium">カタログ表記</th>
-                <th className="py-2 pr-4 font-medium">価格・品番</th>
-                <th className="py-2 font-medium">ページ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {color.appearances.map((a, i) => (
-                <tr key={`${a.catalogPage}-${a.printedAs}-${i}`} style={{ borderTop: "1px solid var(--line)" }}>
-                  <td className="py-3 pr-4">{a.line}</td>
-                  <td className="py-3 pr-4">
-                    <ul className="grid gap-0.5">
-                      {a.beadTypes.map((t) => (
-                        <li key={t}>
-                          {typeInfo.get(t)?.name ?? t}
-                          {typeInfo.get(t)?.size && (
-                            <span className="ml-1 text-[11px]" style={{ color: "var(--fg-3)" }}>
-                              {typeInfo.get(t)!.size}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className="py-3 pr-4">{a.salesStyle}</td>
-                  <td className="py-3 pr-4 tabnum">{a.printedForms.join(" / ")}</td>
-                  <td className="py-3 pr-4">
-                    {a.variants.length === 0 ? (
-                      <span style={{ color: "var(--fg-3)" }}>価格表をご参照ください</span>
-                    ) : (
-                      <ul className="grid gap-0.5">
-                        {a.variants.map((v, vi) => {
-                          const live = v.productCode ? prices.prices[v.productCode] : undefined;
-                          const yen = live?.price ?? v.price;
-                          return (
-                            <li key={`${v.productCode ?? vi}`} className="tabnum">
-                              {v.style && <span>{v.style} </span>}
-                              {v.quantity && (
-                                <span style={{ color: "var(--fg-3)" }}>{v.quantity} </span>
-                              )}
-                              {yen != null && <span className="font-medium">{yen.toLocaleString("ja-JP")}円</span>}
-                              {v.productCode && (
-                                <span className="ml-1 text-[11px]" style={{ color: "var(--fg-3)" }}>
-                                  #{v.productCode}
-                                </span>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </td>
-                  <td className="py-3 tabnum" style={{ color: "var(--fg-2)" }}>
-                    P.{a.catalogPage}
-                  </td>
+      {color.appearances.length > 0 && (
+        <Section title="このカラーが使われているビーズ">
+          <div className="scroll-x">
+            <table className="w-full min-w-[640px] border-collapse text-[13px]">
+              <thead>
+                <tr
+                  style={{ color: "var(--fg-3)" }}
+                  className="text-left text-[11px]"
+                >
+                  <th className="py-2 pr-4 font-medium">製品ライン</th>
+                  <th className="py-2 pr-4 font-medium">ビーズ種別・サイズ</th>
+                  <th className="py-2 pr-4 font-medium">販売スタイル</th>
+                  <th className="py-2 pr-4 font-medium">カタログ表記</th>
+                  <th className="py-2 pr-4 font-medium">価格・品番</th>
+                  <th className="py-2 font-medium">ページ</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="mt-3 text-[11px]" style={{ color: "var(--fg-3)" }}>
-          {prices.meta.priceKind}・税抜。{catalog.meta.priceNote}
-        </p>
-      </Section>
+              </thead>
+              <tbody>
+                {color.appearances.map((a, i) => (
+                  <tr
+                    key={`${a.catalogPage}-${a.printedAs}-${i}`}
+                    style={{ borderTop: "1px solid var(--line)" }}
+                  >
+                    <td className="py-3 pr-4">{a.line}</td>
+                    <td className="py-3 pr-4">
+                      <ul className="grid gap-0.5">
+                        {a.beadTypes.map((t) => (
+                          <li key={t}>
+                            {typeInfo.get(t)?.name ?? t}
+                            {typeInfo.get(t)?.size && (
+                              <span
+                                className="ml-1 text-[11px]"
+                                style={{ color: "var(--fg-3)" }}
+                              >
+                                {typeInfo.get(t)!.size}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className="py-3 pr-4">{a.salesStyle}</td>
+                    <td className="py-3 pr-4 tabnum">
+                      {a.printedForms.join(" / ")}
+                    </td>
+                    <td className="py-3 pr-4">
+                      {a.variants.length === 0 ? (
+                        <span style={{ color: "var(--fg-3)" }}>
+                          価格表をご参照ください
+                        </span>
+                      ) : (
+                        <ul className="grid gap-0.5">
+                          {a.variants.map((v, vi) => {
+                            const live = v.productCode
+                              ? prices.prices[v.productCode]
+                              : undefined;
+                            const yen = live?.price ?? v.price;
+                            return (
+                              <li
+                                key={`${v.productCode ?? vi}`}
+                                className="tabnum"
+                              >
+                                {v.style && <span>{v.style} </span>}
+                                {v.quantity && (
+                                  <span style={{ color: "var(--fg-3)" }}>
+                                    {v.quantity}{" "}
+                                  </span>
+                                )}
+                                {yen != null && (
+                                  <span className="font-medium">
+                                    {yen.toLocaleString("ja-JP")}円
+                                  </span>
+                                )}
+                                {v.productCode && (
+                                  <span
+                                    className="ml-1 text-[11px]"
+                                    style={{ color: "var(--fg-3)" }}
+                                  >
+                                    #{v.productCode}
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </td>
+                    <td
+                      className="py-3 tabnum"
+                      style={{ color: "var(--fg-2)" }}
+                    >
+                      P.{a.catalogPage}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-[11px]" style={{ color: "var(--fg-3)" }}>
+            {prices.meta.priceKind}・税抜。{catalog.meta.priceNote}
+          </p>
+        </Section>
+      )}
 
-      <Section title="色の近いカラー" note="OKLab色空間での距離が近い順に表示しています。">
+      <Section
+        title="色の近いカラー"
+        note="OKLab色空間での距離が近い順に表示しています。"
+      >
         <SwatchRow colors={similar.map(toChip)} currentKey={color.key} />
       </Section>
     </article>
@@ -377,7 +528,11 @@ export default async function ColorPage({ params }: Params) {
 }
 
 /** How tall to draw a shape's photo so the beads compare at true size. */
-function shapeHeight(sh: { category: string; mm: number; height: number }): number {
+function shapeHeight(sh: {
+  category: string;
+  mm: number;
+  height: number;
+}): number {
   const native = sh.height || 60;
   if (LENGTHWISE.some((w) => sh.category.includes(w)) || !sh.mm) {
     return Math.round(native * LENGTHWISE_SCALE);
@@ -385,8 +540,11 @@ function shapeHeight(sh: { category: string; mm: number; height: number }): numb
   return Math.round(Math.min(sh.mm * PX_PER_MM, native * MAX_UPSCALE));
 }
 
-
-function nearestColors(catalog: Catalog, color: BeadColor, n: number): BeadColor[] {
+function nearestColors(
+  catalog: Catalog,
+  color: BeadColor,
+  n: number,
+): BeadColor[] {
   const target = hexToOklab(color.color.hex);
   return catalog.colors
     .filter((c) => c.key !== color.key)
@@ -431,7 +589,13 @@ function toChip(c: BeadColor): Chip {
   };
 }
 
-function SwatchRow({ colors, currentKey }: { colors: Chip[]; currentKey: string }) {
+function SwatchRow({
+  colors,
+  currentKey,
+}: {
+  colors: Chip[];
+  currentKey: string;
+}) {
   return (
     <ul className="scroll-x flex gap-3 pb-2">
       {colors.map((c) => {
@@ -467,7 +631,10 @@ function SwatchRow({ colors, currentKey }: { colors: Chip[]; currentKey: string 
               <p className="tabnum px-2 py-1.5 text-[12px] font-medium">
                 {c.key}
                 {current && (
-                  <span className="ml-1 text-[10px]" style={{ color: "var(--accent)" }}>
+                  <span
+                    className="ml-1 text-[10px]"
+                    style={{ color: "var(--accent)" }}
+                  >
                     表示中
                   </span>
                 )}

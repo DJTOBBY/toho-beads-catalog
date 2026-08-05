@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import type { SwatchSource } from "@/lib/color";
+
 export type ColorMetrics = {
   hex: string;
   hue: number;
@@ -49,6 +51,21 @@ export type OfficialInfo = {
   }[];
 };
 
+/** The RE:glass line, which is made from bottle cullet instead of a recipe. */
+export type ReglassInfo = {
+  /** bottle colour this was melted from */
+  bottle: string;
+  bottleEn: string;
+  /** the catalogue colour whose number and process this mirrors */
+  baseKey: string;
+  sizes: { category: string; size: string; mm: number }[];
+  id: string;
+  name: string;
+  nameJa: string;
+  note: string;
+  site: string;
+};
+
 export type BeadColor = {
   key: string;
   number: number;
@@ -60,8 +77,9 @@ export type BeadColor = {
   notes: string[];
   color: ColorMetrics;
   swatch: string;
-  swatchSource: "official" | "catalog";
+  swatchSource: SwatchSource;
   official: OfficialInfo | null;
+  reglass?: ReglassInfo;
   lines: string[];
   beadTypes: string[];
   salesStyles: string[];
@@ -86,6 +104,8 @@ export type Catalog = {
     appearanceCount: number;
     pageCount: number;
     droppedAppearances: number;
+    /** null until build_reglass.py has run */
+    reglass: { count: number; id: string; name: string; nameJa: string; note: string; site: string } | null;
   };
   finishes: {
     name: string;
@@ -167,10 +187,11 @@ export type ColorIndexEntry = {
   /** sales styles */
   y: string[];
   sw: string;
-  /** "official" images live under /official, catalogue crops under /swatches */
-  src: "official" | "catalog";
+  src: SwatchSource;
   /** TOHO's own colour words (青 / メタリック / パステル …) */
   w: string[];
+  /** part of the RE:glass recycled-glass line */
+  rg: boolean;
   matte: boolean;
   /** no crop on any page was clean enough to show */
   unverified: boolean;
@@ -192,6 +213,7 @@ export function toIndex(colors: BeadColor[]): ColorIndexEntry[] {
     sw: c.swatch,
     src: c.swatchSource,
     w: c.official?.colorWords ?? [],
+    rg: Boolean(c.reglass),
     matte: c.matte,
     unverified: c.unverified,
   }));

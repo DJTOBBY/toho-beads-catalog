@@ -49,7 +49,6 @@ export default async function HomePage() {
           className="mt-3 max-w-2xl text-[14px] leading-relaxed sm:text-[15px]"
           style={{ color: "var(--fg-2)" }}
         >
-          カタログ掲載の
           <strong className="tabnum font-semibold" style={{ color: "var(--fg)" }}>
             {catalog.meta.colorCount}
           </strong>
@@ -58,6 +57,9 @@ export default async function HomePage() {
         </p>
         <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-[12px]">
           <Stat label="収録カラー" value={`${catalog.meta.colorCount} 色`} />
+          {catalog.meta.reglass && (
+            <Stat label="RE:glass" value={`${catalog.meta.reglass.count} 色`} />
+          )}
           <Stat label="掲載バリエーション" value={`${catalog.meta.appearanceCount} 件`} />
           <Stat label="仕上げ加工" value={`${catalog.finishes.length} 種類`} />
           <Stat label="価格収録" value={`${withPrice.size} 色 / ${prices.meta.codeCount} 品番`} />
@@ -72,6 +74,11 @@ export default async function HomePage() {
         salesStyles={[...new Set(catalog.colors.flatMap((c) => c.salesStyles))].sort()}
         colorWords={colorWords}
         codeIndex={codeIndex}
+        reglass={
+          catalog.meta.reglass
+            ? { name: catalog.meta.reglass.name, count: catalog.meta.reglass.count }
+            : null
+        }
       />
     </>
   );

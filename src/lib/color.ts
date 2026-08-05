@@ -93,9 +93,18 @@ export const FAMILY_SWATCH: Record<string, string> = {
     src="/…"> does not, and every swatch is one of those. */
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
+/** Where a colour's swatch photograph came from, which is also where it lives. */
+export type SwatchSource = "official" | "catalog" | "reglass";
+
+const SWATCH_DIR: Record<SwatchSource, string> = {
+  official: "/official",
+  catalog: "/swatches",
+  reglass: "/reglass",
+};
+
 /** Where a swatch image is served from, given its source. */
-export function swatchUrl(name: string, source: "official" | "catalog"): string {
-  return `${BASE_PATH}${source === "official" ? "/official" : "/swatches"}/${name}`;
+export function swatchUrl(name: string, source: SwatchSource): string {
+  return `${BASE_PATH}${SWATCH_DIR[source]}/${name}`;
 }
 
 /** URL for one of the official shape photographs. */

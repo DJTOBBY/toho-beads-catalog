@@ -14,6 +14,8 @@ type Props = {
   colorWords: string[];
   /** colour number -> product codes, so the search box also matches 品番. */
   codeIndex: Record<string, string>;
+  /** the RE:glass line, when the data has been built; null hides its filter. */
+  reglass: { name: string; count: number } | null;
 };
 
 type Sort = "number" | "hue" | "light" | "match";
@@ -31,6 +33,7 @@ export function CatalogBrowser({
   salesStyles,
   colorWords,
   codeIndex,
+  reglass,
 }: Props) {
   const [query, setQuery] = useState("");
   const [families, setFamilies] = useState<Set<string>>(new Set());
@@ -39,6 +42,7 @@ export function CatalogBrowser({
   const [styles, setStyles] = useState<Set<string>>(new Set());
   const [words, setWords] = useState<Set<string>>(new Set());
   const [matteOnly, setMatteOnly] = useState(false);
+  const [reglassOnly, setReglassOnly] = useState(false);
   const [pickedColor, setPickedColor] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("number");
   const [limit, setLimit] = useState(240);
@@ -67,6 +71,7 @@ export function CatalogBrowser({
       if (styles.size && !c.y.some((y) => styles.has(y))) return false;
       if (words.size && !c.w.some((w) => words.has(w))) return false;
       if (matteOnly && !c.matte) return false;
+      if (reglassOnly && !c.rg) return false;
       if (q) {
         const inKey = c.k.includes(q);
         const inCode = (codeIndex[c.k] ?? "").includes(q);
@@ -100,6 +105,7 @@ export function CatalogBrowser({
     styles,
     words,
     matteOnly,
+    reglassOnly,
     pickedColor,
     sort,
     labs,
@@ -108,7 +114,13 @@ export function CatalogBrowser({
 
   const visible = results.slice(0, limit);
   const activeFilters =
-    families.size + finishes.size + beadTypes.size + styles.size + words.size + (matteOnly ? 1 : 0);
+    families.size +
+    finishes.size +
+    beadTypes.size +
+    styles.size +
+    words.size +
+    (matteOnly ? 1 : 0) +
+    (reglassOnly ? 1 : 0);
 
   function toggle(set: Set<string>, apply: (s: Set<string>) => void, value: string) {
     const next = new Set(set);
@@ -126,6 +138,7 @@ export function CatalogBrowser({
     setStyles(new Set());
     setWords(new Set());
     setMatteOnly(false);
+    setReglassOnly(false);
     setPickedColor(null);
     setSort("number");
     setLimit(240);
@@ -295,6 +308,17 @@ export function CatalogBrowser({
               </Chip>
             </div>
           </Field>
+
+          {reglass && (
+            <Field label="シリーズ">
+              <Chip on={reglassOnly} onClick={() => setReglassOnly(!reglassOnly)}>
+                {reglass.name} {reglass.count}
+              </Chip>
+              <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: "var(--fg-3)" }}>
+                回収したガラス瓶から作られた、着色しないビーズ。
+              </p>
+            </Field>
+          )}
 
           {(activeFilters > 0 || query || pickedColor) && (
             <button
