@@ -278,12 +278,20 @@ export default async function ColorPage({ params }: Params) {
             {color.appearances.length > 0 ? (
               <>
                 掲載ページ: カタログ{" "}
-                <span className="tabnum">
-                  P.
-                  {[
-                    ...new Set(color.appearances.map((a) => a.catalogPage)),
-                  ].join(" / P.")}
-                </span>
+                {[...new Set(color.appearances.map((a) => a.catalogPage))].map(
+                  (n, i) => (
+                    <span key={n}>
+                      {i > 0 && " / "}
+                      <Link
+                        href={`/pages/${n}/`}
+                        className="tabnum underline decoration-dotted underline-offset-4"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        P.{n}
+                      </Link>
+                    </span>
+                  ),
+                )}
               </>
             ) : color.reglass ? (
               <>
@@ -504,7 +512,14 @@ export default async function ColorPage({ params }: Params) {
                       className="py-3 tabnum"
                       style={{ color: "var(--fg-2)" }}
                     >
-                      P.{a.catalogPage}
+                      <Link
+                        href={`/pages/${a.catalogPage}/`}
+                        className="underline decoration-dotted underline-offset-4"
+                        style={{ color: "var(--accent)" }}
+                        title={`カタログ${a.catalogPage}ページの誌面を開く`}
+                      >
+                        P.{a.catalogPage}
+                      </Link>
                     </td>
                   </tr>
                 ))}
