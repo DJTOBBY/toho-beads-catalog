@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { SwatchSource } from "@/lib/color";
@@ -168,6 +168,42 @@ export function getPrices(): Promise<Prices> {
   if (!CACHE) return readJson<Prices>("prices.json");
   pricesCache ??= readJson<Prices>("prices.json");
   return pricesCache;
+}
+
+// Built once and reused: every one of the 1,036 colour pages asks for its own
+// codes, and rescanning 1,638 price rows each time is 1.7M comparisons.
+const codeIndexCache = new WeakMap<Prices, Map<string, string[]>>();
+
+/** Product codes belonging to each colour, ascending. */
+export function codesByColor(prices: Prices): Map<string, string[]> {
+  let index = codeIndexCache.get(prices);
+  if (index) return index;
+
+  index = new Map<string, string[]>();
+  for (const code of Object.keys(prices.prices).sort()) {
+    const key = prices.prices[code].colorKey;
+    const list = index.get(key);
+    if (list) list.push(code);
+    else index.set(key, [code]);
+  }
+  codeIndexCache.set(prices, index);
+  return index;
+}
+
+/**
+ * Catalogue page numbers that render_pages.py has produced an image for.
+ *
+ * Shared with the sitemap, which has to list exactly the pages that exist —
+ * meta.pageCount counts pages in the source PDF, not pages rendered.
+ */
+export async function getRenderedPages(): Promise<number[]> {
+  const dir = path.join(process.cwd(), "public", "pages");
+  const files = await readdir(dir);
+  return files
+    .map((f) => /^p(\d+)\.webp$/.exec(f))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => Number(m[1]))
+    .sort((a, b) => a - b);
 }
 
 /** The compact record the browse page ships to the client. */

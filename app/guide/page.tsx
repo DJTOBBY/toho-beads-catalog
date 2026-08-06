@@ -1,12 +1,27 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/JsonLd";
 import { getCatalog } from "@/lib/catalog";
+import { BRAND, breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "ビーズの加工と形状 | TOHO BEADS カタログ",
-  description:
-    "スキ・銀メッキ・艶・セイロン・玉虫など仕上げ加工の種類と、丸小・特小・マガ玉・竹ビーズなど形状とサイズの一覧。カラーNo.末尾の記号の意味も解説します。",
-};
+const GUIDE_TITLE = "ビーズの加工と形状";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const catalog = await getCatalog();
+  // Named from the data so the examples stay the ones the page actually shows.
+  // Only the first few of each: the full lists run past what a snippet displays.
+  const finishes = catalog.finishes.slice(0, 5).map((f) => f.name).join("・");
+  const groups = [...new Set(catalog.beadTypes.map((t) => t.group))];
+
+  return pageMetadata({
+    path: "/guide/",
+    title: `${GUIDE_TITLE}｜${BRAND}の仕上げ加工${catalog.finishes.length}種とサイズ一覧`,
+    description:
+      `${BRAND}の仕上げ加工${catalog.finishes.length}種類（${finishes}ほか）と、` +
+      `${groups.slice(0, 2).join("・")}など形状${catalog.beadTypes.length}種のサイズ一覧。` +
+      `丸小と丸大の違いや、カラーNo.末尾に付くL・D・Fなど記号の意味も解説します。`,
+  });
+}
 
 export default async function GuidePage() {
   const catalog = await getCatalog();
@@ -20,8 +35,14 @@ export default async function GuidePage() {
 
   return (
     <div className="pt-10">
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: "色を探す", path: "/" },
+          { name: GUIDE_TITLE, path: "/guide/" },
+        ])}
+      />
       <h1 className="text-[26px] font-semibold tracking-tight sm:text-[30px]">
-        ビーズの加工と形状
+        {GUIDE_TITLE}
       </h1>
       <p className="mt-2 max-w-2xl text-[14px] leading-relaxed" style={{ color: "var(--fg-2)" }}>
         カタログの「ビーズの加工の種類」「ビーズの形状 目次」に基づく一覧です。

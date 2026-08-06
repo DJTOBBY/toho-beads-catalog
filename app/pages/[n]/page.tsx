@@ -1,42 +1,73 @@
-import { readdir } from "node:fs/promises";
-import path from "node:path";
-
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getCatalog } from "@/lib/catalog";
-import { BASE_PATH } from "@/lib/color";
+import { JsonLd } from "@/components/JsonLd";
+import { getCatalog, getRenderedPages } from "@/lib/catalog";
+import { BASE_PATH, catalogPageImagePath } from "@/lib/color";
+import { imageSize } from "@/lib/imageSize";
+import {
+  BRAND,
+  breadcrumbJsonLd,
+  catalogPageJsonLd,
+  catalogPagePath,
+  pageMetadata,
+  siteUrl,
+} from "@/lib/seo";
 
 type Params = { params: Promise<{ n: string }> };
 
-/** Catalogue page numbers that render_pages.py has produced an image for. */
-async function renderedPages(): Promise<number[]> {
-  const dir = path.join(process.cwd(), "public", "pages");
-  const files = await readdir(dir);
-  return files
-    .map((f) => /^p(\d+)\.webp$/.exec(f))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => Number(m[1]))
-    .sort((a, b) => a - b);
-}
-
 export async function generateStaticParams() {
-  return (await renderedPages()).map((n) => ({ n: String(n) }));
+  return (await getRenderedPages()).map((n) => ({ n: String(n) }));
 }
 
+/** Which colours the database placed on a printed page, in catalogue order. */
+function colorsOnPage(catalog: Awaited<ReturnType<typeof getCatalog>>, page: number) {
+  return catalog.colors
+    .filter((c) => c.appearances.some((a) => a.catalogPage === page))
+    .sort((a, b) => a.number - b.number || a.suffix.localeCompare(b.suffix));
+}
+
+function linesOnPage(catalog: Awaited<ReturnType<typeof getCatalog>>, page: number) {
+  return [
+    ...new Set(
+      catalog.colors.flatMap((c) =>
+        c.appearances.filter((a) => a.catalogPage === page).map((a) => a.line),
+      ),
+    ),
+  ];
+}
+
+// 72 scans of the same catalogue would otherwise differ only by a number, so the
+// product lines and the colour numbers printed on each page carry the text.
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { n } = await params;
-  return {
-    title: `カタログ P.${n} | TOHO BEADS カタログ`,
-    description: `ビーズカタログ2021 第${Number(n) <= 36 ? 1 : 2}部 ${n}ページの誌面。`,
-  };
+  const page = Number(n);
+  const catalog = await getCatalog();
+  const lines = linesOnPage(catalog, page);
+  const keys = colorsOnPage(catalog, page).map((c) => c.key);
+
+  // meta.source names both volumes ("… 第1部・第2部"), which is more than a title
+  // has room for; the edition alone is what a reader recognises.
+  const work = catalog.meta.source.split(" ")[0];
+  const headline = lines.slice(0, 2).join("・") + (lines.length > 2 ? "ほか" : "");
+
+  return pageMetadata({
+    path: catalogPagePath(page),
+    title: `${work} P.${page}${headline ? `｜${headline}` : ""} | ${BRAND}`,
+    description:
+      `${catalog.meta.source} ${page}ページの誌面。` +
+      (lines.length ? `掲載は${lines.join("・")}。` : "") +
+      (keys.length
+        ? `カラーNo.${keys.slice(0, 8).join("・")}${keys.length > 8 ? `ほか計${keys.length}色` : ""}が載っています。`
+        : ""),
+  });
 }
 
 export default async function CatalogPageView({ params }: Params) {
   const { n } = await params;
   const page = Number(n);
-  const [pages, catalog] = await Promise.all([renderedPages(), getCatalog()]);
+  const [pages, catalog] = await Promise.all([getRenderedPages(), getCatalog()]);
   if (!pages.includes(page)) notFound();
 
   const i = pages.indexOf(page);
@@ -45,20 +76,31 @@ export default async function CatalogPageView({ params }: Params) {
 
   // Which colours the database placed on this page. The printed page shows
   // numbers only, so this is the way back from the paper into the search.
-  const onPage = catalog.colors
-    .filter((c) => c.appearances.some((a) => a.catalogPage === page))
-    .sort((a, b) => a.number - b.number || a.suffix.localeCompare(b.suffix));
+  const onPage = colorsOnPage(catalog, page);
+  const lines = linesOnPage(catalog, page);
 
-  const lines = [
-    ...new Set(
-      catalog.colors.flatMap((c) =>
-        c.appearances.filter((a) => a.catalogPage === page).map((a) => a.line),
-      ),
-    ),
-  ];
+  const scan = catalogPageImagePath(page);
+  // The scan is the tallest thing on the page; without its ratio the colour
+  // list below it jumps down the moment the image lands.
+  const scanBox = await imageSize(scan);
 
   return (
     <article className="pt-6">
+      <JsonLd
+        data={catalogPageJsonLd({
+          page,
+          image: siteUrl(scan),
+          description: `${catalog.meta.source} ${page}ページの誌面と、そこに掲載されているカラー${onPage.length}色。`,
+          colorKeys: onPage.map((c) => c.key),
+          source: catalog.meta.source,
+        })}
+      />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: "色を探す", path: "/" },
+          { name: `カタログ P.${page}`, path: catalogPagePath(page) },
+        ])}
+      />
       <nav className="text-[12px]" style={{ color: "var(--fg-3)" }}>
         <Link href="/" style={{ color: "var(--accent)" }}>
           色を探す
@@ -69,7 +111,7 @@ export default async function CatalogPageView({ params }: Params) {
 
       <header className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-2">
         <h1 className="tabnum text-[28px] font-semibold leading-none tracking-tight">
-          P.{page}
+          <span className="sr-only">{catalog.meta.source} </span>P.{page}
         </h1>
         <p className="text-[13px]" style={{ color: "var(--fg-2)" }}>
           {lines.length > 0 ? lines.join("・") : catalog.meta.source}
@@ -87,8 +129,11 @@ export default async function CatalogPageView({ params }: Params) {
         style={{ border: "1px solid var(--line)", background: "var(--swatch-bg)" }}
       >
         <img
-          src={`${BASE_PATH}/pages/p${page}.webp`}
-          alt={`ビーズカタログ2021 ${page}ページ`}
+          src={`${BASE_PATH}${scan}`}
+          alt={`${catalog.meta.source} ${page}ページの誌面${lines.length ? `（${lines.join("・")}）` : ""}`}
+          width={scanBox?.width}
+          height={scanBox?.height}
+          fetchPriority="high"
           className="mx-auto block h-auto w-full"
           style={{ maxWidth: 1100 }}
         />

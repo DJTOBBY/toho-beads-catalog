@@ -150,6 +150,7 @@ PDF の場所は `TOHO_CATALOG_PDF` 環境変数で指定できます（既定�
 | `pipeline/verify_page.py` | 誌面と抽出結果を並べた検証シート（`build/verify/pNN.png`） |
 | `pipeline/fetch_official.py` | 公式サイトの製品データと写真の取得 |
 | `pipeline/cross_check.py` | 誌面と公式サイトの加工区分の照合 |
+| `pipeline/og_image.py` | SNS 共有カード `public/og.png` の生成（macOS のフォントを使うためローカル実行） |
 
 ### 抽出の設計上のポイント
 

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { JsonLd } from "@/components/JsonLd";
 import {
   type BeadColor,
   type Catalog,
+  codesByColor,
   findColor,
   getCatalog,
   getPrices,
@@ -14,8 +16,20 @@ import {
   hexToOklab,
   oklabDistance,
   officialUrl,
+  swatchPath,
   swatchUrl,
 } from "@/lib/color";
+import { imageSize } from "@/lib/imageSize";
+import {
+  breadcrumbJsonLd,
+  colorDescription,
+  colorPath,
+  colorProductJsonLd,
+  colorTitle,
+  pageMetadata,
+  SITE_NAME,
+  siteUrl,
+} from "@/lib/seo";
 
 type Params = { params: Promise<{ key: string }> };
 
@@ -51,18 +65,21 @@ export async function generateStaticParams() {
   return catalog.colors.map((c) => ({ key: c.key }));
 }
 
+// 1,036 pages built from one template go thin fast, so the title and the
+// description are written from this colour's own record — its finish, hue
+// family, hex, bead types, product codes and printed pages — and no two colours
+// carry the same set.
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { key } = await params;
-  const catalog = await getCatalog();
+  const [catalog, prices] = await Promise.all([getCatalog(), getPrices()]);
   const color = findColor(catalog, decodeURIComponent(key));
-  if (!color) return { title: "見つかりませんでした | TOHO BEADS カタログ" };
-  const finish = color.finishes[0]?.variation ?? "";
-  return {
-    title: `カラーNo.${color.key}${finish ? `（${finish}）` : ""} | TOHO BEADS カタログ`,
-    description: `トーホービーズ カラーNo.${color.key}。${
-      finish ? `仕上げ加工は${finish}。` : ""
-    }${color.beadTypes.slice(0, 6).join("・")}などで展開しています。`,
-  };
+  if (!color) return { title: `見つかりませんでした | ${SITE_NAME}` };
+
+  return pageMetadata({
+    path: colorPath(color.key),
+    title: colorTitle(color),
+    description: colorDescription(color, codesByColor(prices).get(color.key) ?? []),
+  });
 }
 
 export default async function ColorPage({ params }: Params) {
@@ -96,8 +113,27 @@ export default async function ColorPage({ params }: Params) {
         ? "丸大サイズのみの常備品です。"
         : null;
 
+  const productCodes = codesByColor(prices).get(color.key) ?? [];
+  const swatchFile = swatchPath(color.swatch, color.swatchSource);
+  // Read from the file rather than guessed: the crops are not one size, and the
+  // panel is the largest thing above the fold, so a wrong box is a visible jump.
+  const swatchBox = color.unverified ? null : await imageSize(swatchFile);
+
   return (
     <article className="pt-6">
+      <JsonLd
+        data={colorProductJsonLd(color, {
+          image: color.unverified ? null : siteUrl(swatchFile),
+          description: colorDescription(color, productCodes),
+          productCodes,
+        })}
+      />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: "色を探す", path: "/" },
+          { name: `カラーNo.${color.key}`, path: colorPath(color.key) },
+        ])}
+      />
       <nav className="mb-5 text-[12px]" style={{ color: "var(--fg-3)" }}>
         <Link href="/">色を探す</Link>
         <span className="mx-1.5">/</span>
@@ -133,7 +169,10 @@ export default async function ColorPage({ params }: Params) {
                beads. */
             <img
               src={swatchUrl(color.swatch, color.swatchSource)}
-              alt={`カラーNo.${color.key} のビーズ`}
+              alt={`トーホービーズ カラーNo.${color.key}（${color.color.family}系）のビーズ`}
+              width={swatchBox?.width}
+              height={swatchBox?.height}
+              fetchPriority="high"
               className="h-auto w-auto max-w-full object-contain"
               style={{ maxHeight: 200 }}
             />
@@ -142,7 +181,11 @@ export default async function ColorPage({ params }: Params) {
 
         <div>
           <div className="flex items-baseline gap-3">
+            {/* The number alone is what the design shows, but it is also all a
+                screen reader — and a crawler weighing the heading — would get,
+                so the label it stands for is spelled out ahead of it. */}
             <h1 className="tabnum text-[38px] font-semibold leading-none tracking-tight">
+              <span className="sr-only">トーホービーズ カラーNo.</span>
               {color.key}
             </h1>
             <span
@@ -392,8 +435,10 @@ export default async function ColorPage({ params }: Params) {
                   >
                     <img
                       src={officialUrl(sh.image)}
-                      alt={`${sh.category} No.${color.key}`}
+                      alt={`トーホービーズ ${sh.category}${sh.size ? ` 外径約${sh.size}mm` : ""} カラーNo.${color.key}`}
                       loading="lazy"
+                      width={sh.width || undefined}
+                      height={sh.height || undefined}
                       style={{
                         height: h,
                         width: sh.height

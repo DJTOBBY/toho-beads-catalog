@@ -102,12 +102,22 @@ const SWATCH_DIR: Record<SwatchSource, string> = {
   reglass: "/reglass",
 };
 
+/** A swatch's path inside public/, which is also what fs sees. */
+export function swatchPath(name: string, source: SwatchSource): string {
+  return `${SWATCH_DIR[source]}/${name}`;
+}
+
 /** Where a swatch image is served from, given its source. */
 export function swatchUrl(name: string, source: SwatchSource): string {
-  return `${BASE_PATH}${SWATCH_DIR[source]}/${name}`;
+  return `${BASE_PATH}${swatchPath(name, source)}`;
 }
 
 /** URL for one of the official shape photographs. */
 export function officialUrl(name: string): string {
   return `${BASE_PATH}/official/${name}`;
+}
+
+/** A rendered catalogue page's path inside public/. */
+export function catalogPageImagePath(n: number): string {
+  return `/pages/p${n}.webp`;
 }

@@ -1,5 +1,21 @@
+import type { Metadata } from "next";
+
 import { CatalogBrowser } from "@/components/CatalogBrowser";
+import { JsonLd } from "@/components/JsonLd";
 import { getCatalog, getPrices, toIndex } from "@/lib/catalog";
+import { BRAND, pageMetadata, websiteJsonLd } from "@/lib/seo";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const catalog = await getCatalog();
+  return pageMetadata({
+    path: "/",
+    title: `${BRAND} カラーカタログ｜全${catalog.meta.colorCount}色をカラーNo.・品番・色から探す`,
+    description:
+      `${BRAND}のグラスビーズ${catalog.meta.colorCount}色のカラーチャート。` +
+      `カラーNo.・品番・仕上げ加工${catalog.finishes.length}種・ビーズ種別・色の呼び名で絞り込め、` +
+      `選んだ色に近い順にも並べ替えられます。丸小・丸大・特小のサイズ比較と価格・品番つき。`,
+  });
+}
 
 export default async function HomePage() {
   const [catalog, prices] = await Promise.all([getCatalog(), getPrices()]);
@@ -37,6 +53,7 @@ export default async function HomePage() {
 
   return (
     <>
+      <JsonLd data={websiteJsonLd(catalog.meta.colorCount)} />
       <section className="pt-10 sm:pt-14">
         <h1 className="max-w-3xl text-[26px] font-semibold leading-tight tracking-tight sm:text-[34px]">
           トーホービーズの

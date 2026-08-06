@@ -3,12 +3,40 @@ import Link from "next/link";
 import Script from "next/script";
 import "./globals.css";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { getCatalog } from "@/lib/catalog";
+import { BRAND, OG_IMAGE, SITE_NAME, SITE_URL, siteUrl } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "TOHO BEADS カタログ | ガラスビーズを色から探す",
-  description:
-    "トーホービーズのグラスビーズカタログ。カラーNo.・品番・仕上げ加工・ビーズ種別、そして色そのものから約940色を検索できます。",
-};
+// The colour count is read rather than written down: it has already gone stale
+// once here, and the pipeline changes it every time a line is added.
+export async function generateMetadata(): Promise<Metadata> {
+  const catalog = await getCatalog();
+  const description =
+    `${BRAND}のグラスビーズカタログ。カラーNo.・品番・仕上げ加工・ビーズ種別、` +
+    `そして色そのものから${catalog.meta.colorCount}色を検索できます。`;
+
+  return {
+    // Only a fallback for the resolvers; every route sets its own absolute URLs.
+    metadataBase: new URL(`${SITE_URL}/`),
+    title: `${SITE_NAME} | ガラスビーズを色から探す`,
+    description,
+    applicationName: SITE_NAME,
+    // Large image previews and untruncated snippets are opt-in, and a catalogue
+    // of photographs has little to show without them.
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+    },
+    openGraph: {
+      type: "website",
+      locale: "ja_JP",
+      siteName: SITE_NAME,
+      url: siteUrl("/"),
+      images: [OG_IMAGE],
+    },
+    twitter: { card: "summary_large_image", images: [OG_IMAGE.url] },
+  };
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
