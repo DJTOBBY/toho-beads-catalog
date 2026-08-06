@@ -20,6 +20,35 @@ type Props = {
 
 type Sort = "number" | "hue" | "light" | "match";
 
+/** A colour number split into the letters the catalogue prints around it. */
+type KeyParts = { prefix: string; number: number; suffix: string };
+
+const KEY_RE = /^([A-Z]*)(\d+)([A-Z]*)$/;
+
+function parseKey(s: string): KeyParts | null {
+  const m = KEY_RE.exec(s);
+  return m ? { prefix: m[1], number: Number(m[2]), suffix: m[3] } : null;
+}
+
+/**
+ * Whether a colour answers a typed colour number.
+ *
+ * The number has to be exact. Substring matching meant "1" returned 472 colours
+ * — 100, 1300, 221 — and buried the one the reader was holding.
+ *
+ * The letters are matched as prefixes instead, so a bare number brings back
+ * every variation the catalogue makes of it (1 → 1・1F, 46 → 46・46F・46L・46LF,
+ * 5021 → PF5021), while typing the letters narrows it down.
+ */
+function matchesKey(key: KeyParts | null, q: KeyParts): boolean {
+  return (
+    key !== null &&
+    key.number === q.number &&
+    key.prefix.startsWith(q.prefix) &&
+    key.suffix.startsWith(q.suffix)
+  );
+}
+
 const SORTS: { id: Sort; label: string }[] = [
   { id: "number", label: "カラーNo." },
   { id: "hue", label: "色相順" },
@@ -56,6 +85,13 @@ export function CatalogBrowser({
     [colors],
   );
 
+  // Parsed once rather than per keystroke: 1,036 keys through a regex on every
+  // character typed is the kind of work useDeferredValue exists to avoid.
+  const keyParts = useMemo(
+    () => new Map(colors.map((c) => [c.k, parseKey(c.k.toUpperCase())])),
+    [colors],
+  );
+
   const familyCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const c of colors) m.set(c.fam, (m.get(c.fam) ?? 0) + 1);
@@ -63,7 +99,10 @@ export function CatalogBrowser({
   }, [colors]);
 
   const results = useMemo(() => {
-    const q = deferredQuery.trim().toUpperCase().replace(/\s+/g, "");
+    const q = deferredQuery.trim().toUpperCase().replace(/[\s-]+/g, "");
+    // A query that is not a colour number at all ("F", "スキ", "PF") still has to
+    // find something, so it falls back to plain containment.
+    const qKey = q ? parseKey(q) : null;
     let out = colors.filter((c) => {
       if (families.size && !families.has(c.fam)) return false;
       if (finishes.size && !c.f.some((f) => finishes.has(f))) return false;
@@ -73,8 +112,12 @@ export function CatalogBrowser({
       if (matteOnly && !c.matte) return false;
       if (reglassOnly && !c.rg) return false;
       if (q) {
-        const inKey = c.k.includes(q);
-        const inCode = (codeIndex[c.k] ?? "").includes(q);
+        const inKey = qKey
+          ? matchesKey(keyParts.get(c.k) ?? null, qKey)
+          : c.k.toUpperCase().includes(q);
+        // Product codes are exact too. They are six digits, so containment on a
+        // short query matched almost every colour that has a price.
+        const inCode = (codeIndex[c.k] ?? "").includes(` ${q} `);
         const inFinish = c.f.some((f) => f.toUpperCase().includes(q));
         const inWord = c.w.some((w) => w.toUpperCase().includes(q));
         if (!inKey && !inCode && !inFinish && !inWord) return false;
@@ -106,6 +149,7 @@ export function CatalogBrowser({
     words,
     matteOnly,
     reglassOnly,
+    keyParts,
     pickedColor,
     sort,
     labs,
@@ -164,6 +208,9 @@ export function CatalogBrowser({
                 color: "var(--fg)",
               }}
             />
+            <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: "var(--fg-3)" }}>
+              番号は完全一致です。「1」なら 1・1F が出て、100・221 は出ません。
+            </p>
           </Field>
 
           <Field label="色から探す">

@@ -33,9 +33,11 @@ export default async function HomePage() {
   }
 
   // One searchable string of product codes per colour, so typing a 品番 finds it.
+  // Every code is fenced by spaces on both sides: the browser looks for " 741911 "
+  // so a code only matches in full, never as a fragment of a longer one.
   const codeIndex: Record<string, string> = {};
   for (const [code, entry] of Object.entries(prices.prices)) {
-    codeIndex[entry.colorKey] = (codeIndex[entry.colorKey] ?? "") + code + " ";
+    codeIndex[entry.colorKey] = (codeIndex[entry.colorKey] ?? " ") + code + " ";
   }
 
   const withPrice = new Set(Object.values(prices.prices).map((p) => p.colorKey));
