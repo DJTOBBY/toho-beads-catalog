@@ -54,3 +54,9 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # The site is ~220 MB across roughly 5,000 files — 3,384 product
+          # photos, 72 page scans and 1,112 pages — and Pages regularly takes
+          # longer than the action's 10-minute default to publish that.
+          # The upload has already succeeded by then; only the wait gives up.
+          timeout: 1800000
